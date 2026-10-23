@@ -1,0 +1,35 @@
+{
+  "name": "dots-and-lines",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "playground"
+  ],
+  "scripts": {
+    "dev": "yarn workspace @dots-and-lines/playground dev",
+    "build": "yarn workspaces foreach --all --topological --no-private run build",
+    "build:playground": "yarn workspace @dots-and-lines/playground build",
+    "test": "yarn workspaces foreach --all --no-private run test",
+    "typecheck": "yarn workspaces foreach --all run typecheck",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "yarn build && changeset publish"
+  },
+  "packageManager": "yarn@4.9.2",
+  "devDependencies": {
+    "@changesets/cli": "^2.29.0",
+    "@eslint/js": "^9.25.0",
+    "eslint": "^9.25.0",
+    "eslint-config-prettier": "^10.1.2",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.19",
+    "globals": "^16.0.0",
+    "prettier": "^3.5.3",
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.31.0"
+  }
+}
