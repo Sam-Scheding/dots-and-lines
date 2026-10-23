@@ -15,29 +15,29 @@ Reference for what `pedal-party` stores and renders today, based on reading `ped
 
 ## `placements[]` (rendered as pedals / pedalboards)
 
-| Field         | Type                      | Validation on decode   | Meaning                                                      | Lib / App        |
-| ------------- | ------------------------- | ---------------------- | ------------------------------------------------------------ | ---------------- |
-| `id`          | `string`                  | must be string         | Stable identity; leads reference it                          | Lib (`Dot.id`)   |
-| `kind`        | `'pedal' \| 'pedalboard'` | must be one of the two | Controls draw order (pedalboards render first, under pedals) | App (`data`)     |
-| `brand`       | `string`                  | must be string         | Label / `alt` text                                           | App (`data`)     |
-| `name`        | `string`                  | must be string         | Label / `alt` text                                           | App (`data`)     |
-| `widthCm`     | `number`                  | finite                 | Box width in board cm, set as CSS `width: Ncm`               | Lib (`width`)    |
-| `heightCm`    | `number`                  | finite                 | Box height in board cm                                       | Lib (`height`)   |
-| `image`       | `string`                  | must be string         | Image file name, resolved by `pedalImageSrc`                 | App (`data`)     |
-| `xCm`         | `number`                  | finite                 | Left edge in board cm                                        | Lib (`x`)        |
-| `yCm`         | `number`                  | finite                 | Top edge in board cm                                         | Lib (`y`)        |
-| `rotationDeg` | `number`                  | finite                 | Visual rotation only (+90 per click, mod 360)                | Lib (`rotation`) |
+| Field         | Type                      | Validation on decode   | Meaning                                                      | Lib / App                                           |
+| ------------- | ------------------------- | ---------------------- | ------------------------------------------------------------ | --------------------------------------------------- |
+| `id`          | `string`                  | must be string         | Stable identity; leads reference it                          | Lib (`Dot` `id`)                                    |
+| `kind`        | `'pedal' \| 'pedalboard'` | must be one of the two | Controls draw order (pedalboards render first, under pedals) | App (`data`)                                        |
+| `brand`       | `string`                  | must be string         | Label / `alt` text                                           | App (`data`)                                        |
+| `name`        | `string`                  | must be string         | Label / `alt` text                                           | App (`data`)                                        |
+| `widthCm`     | `number`                  | finite                 | Box width in board cm, set as CSS `width: Ncm`               | App (the child's CSS size; the library measures it) |
+| `heightCm`    | `number`                  | finite                 | Box height in board cm                                       | App (the child's CSS size; the library measures it) |
+| `image`       | `string`                  | must be string         | Image file name, resolved by `pedalImageSrc`                 | App (`data`)                                        |
+| `xCm`         | `number`                  | finite                 | Left edge in board cm                                        | Lib (`x`, px)                                       |
+| `yCm`         | `number`                  | finite                 | Top edge in board cm                                         | Lib (`y`, px)                                       |
+| `rotationDeg` | `number`                  | finite                 | Visual rotation only (+90 per click, mod 360)                | Out of scope for the first pass                     |
 
 ## `leads[]` (rendered as cables)
 
-| Field          | Type                                                            | Validation / default on decode                     | Meaning                                                                                                                                  | Lib / App            |
-| -------------- | --------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| `id`           | `string`                                                        | must be string                                     | Identity                                                                                                                                 | Lib (`ElbowLine.id`) |
-| `points`       | `{ xCm, yCm }[]`                                                | at least 2 points, all finite                      | Orthogonal polyline in absolute board cm. First and last are the tips (attachment points). Interior points are the user-draggable elbows | Lib (`points`)       |
-| `startBinding` | `LeadEdgeBinding \| null`                                       | missing is `null`, malformed rejects the whole doc | Which placement edge the start tip is attached to                                                                                        | Lib (`start`)        |
-| `endBinding`   | `LeadEdgeBinding \| null`                                       | same                                               | Same, for the end tip                                                                                                                    | Lib (`end`)          |
-| `color`        | DS `Color`: `purple \| pink \| blue \| neutral \| red \| green` | invalid falls back to `neutral`                    | Stroke colour (a DS token name, not a CSS value)                                                                                         | App (`data`)         |
-| `tipDepthCm`   | `number`                                                        | finite and > 0, else falls back to `0.73`          | How far the plug sticks out of the jack                                                                                                  | Lib (`tipDepth`)     |
+| Field          | Type                                                            | Validation / default on decode                     | Meaning                                                                                                                                  | Lib / App                                               |
+| -------------- | --------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `id`           | `string`                                                        | must be string                                     | Identity                                                                                                                                 | Data only (the component takes no `id`)                 |
+| `points`       | `{ xCm, yCm }[]`                                                | at least 2 points, all finite                      | Orthogonal polyline in absolute board cm. First and last are the tips (attachment points). Interior points are the user-draggable elbows | Lib (`points`)                                          |
+| `startBinding` | `LeadEdgeBinding \| null`                                       | missing is `null`, malformed rejects the whole doc | Which placement edge the start tip is attached to                                                                                        | Lib (`start`)                                           |
+| `endBinding`   | `LeadEdgeBinding \| null`                                       | same                                               | Same, for the end tip                                                                                                                    | Lib (`end`)                                             |
+| `color`        | DS `Color`: `purple \| pink \| blue \| neutral \| red \| green` | invalid falls back to `neutral`                    | Stroke colour (a DS token name, not a CSS value)                                                                                         | App (`data`)                                            |
+| `tipDepthCm`   | `number`                                                        | finite and > 0, else falls back to `0.73`          | How far the plug sticks out of the jack                                                                                                  | App (the size of the tip node; the library measures it) |
 
 `LeadEdgeBinding`:
 
@@ -88,22 +88,22 @@ These are not fields, but they define the data model's invariants.
 
 ## Pedal-party utils that become `core`
 
-| pedal-party util                                                         | Becomes                                | Notes                                                                |
-| ------------------------------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------- |
-| `seed-elbow-points`                                                      | `seedElbowPoints`                      |                                                                      |
-| `normalize-elbow-points`                                                 | `normalizeElbowPoints`                 |                                                                      |
-| `move-elbow-segment`                                                     | `moveElbowSegment`                     |                                                                      |
-| `update-lead-tip` (`updateLeadTip`)                                      | `updateLineTip`                        |                                                                      |
-| `update-lead-tip` (`syncLeadTipsToPlacements`)                           | `syncLinesToDots`                      |                                                                      |
-| `update-lead-tip` (`removePlacementFromLeads`)                           | `removeDotFromLines`                   | Gains a `delete` / `detach` policy                                   |
-| `placement-edge-point`                                                   | `anchorPoint`, `projectOnDotEdge`      |                                                                      |
-| `snap-point-to-placement-edge`                                           | `snapToDotEdge`                        |                                                                      |
-| `lead-tip-rect`                                                          | `tipRect`, `tipOutward`                |                                                                      |
-| `visual-lead-points`                                                     | `visualLinePoints`                     |                                                                      |
-| `build-elbow-svg-path`                                                   | `buildElbowPath`                       |                                                                      |
-| `lead-toolbar-anchor`                                                    | `lineAnchorPoint`                      | For overlay placement                                                |
-| `apply-board-view-action`                                                | `applyViewAction`                      |                                                                      |
-| `normalize-board-input-event`, `resolve-board-input`, `data/board-input` | `resolveInput`, `defaultInputBindings` |                                                                      |
-| `get-css-px-per-cm`                                                      | stays in the consumer                  | Needs the DOM; passed in as `pxPerUnit`                              |
-| `board-url`                                                              | stays in the consumer                  | URL / lz-string is an app feature; core only exposes `parseDocument` |
-| `catalog-*`, `pedal-*`                                                   | stay in the consumer                   | App-specific                                                         |
+| pedal-party util                                                         | Becomes                                | Notes                                                                                   |
+| ------------------------------------------------------------------------ | -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `seed-elbow-points`                                                      | `seedElbowPoints`                      |                                                                                         |
+| `normalize-elbow-points`                                                 | `normalizeElbowPoints`                 |                                                                                         |
+| `move-elbow-segment`                                                     | `moveElbowSegment`                     |                                                                                         |
+| `update-lead-tip` (`updateLeadTip`)                                      | `updateLineTip`                        |                                                                                         |
+| `update-lead-tip` (`syncLeadTipsToPlacements`)                           | `resolveLinePoints`                    | Anchored ends are resolved at render, not re-pinned in state                            |
+| `update-lead-tip` (`removePlacementFromLeads`)                           | `removeDotFromLines`                   | Gains a `delete` / `detach` policy                                                      |
+| `placement-edge-point`                                                   | `anchorPoint`, `projectOnDotEdge`      | Take a measured rectangle                                                               |
+| `snap-point-to-placement-edge`                                           | `snapToDotEdge`                        |                                                                                         |
+| `lead-tip-rect`                                                          | `tipOutward`                           | Tip rectangles go away: tips are consumer nodes                                         |
+| `visual-lead-points`                                                     | `resolveLinePoints`                    | Merged with the row above                                                               |
+| `build-elbow-svg-path`                                                   | `lineSegments`                         | Lines are HTML segments, not an SVG path                                                |
+| `lead-toolbar-anchor`                                                    | `lineAnchorPoint`                      | For overlay placement                                                                   |
+| `apply-board-view-action`                                                | `applyViewAction`                      |                                                                                         |
+| `normalize-board-input-event`, `resolve-board-input`, `data/board-input` | `resolveInput`, `defaultInputBindings` |                                                                                         |
+| `get-css-px-per-cm`                                                      | stays in the consumer                  | Not needed: CSS `cm` is a fixed 96/2.54 px, so pedal-party converts at its own boundary |
+| `board-url`                                                              | stays in the consumer                  | URL / lz-string is an app feature; core only exposes `parseDocument`                    |
+| `catalog-*`, `pedal-*`                                                   | stay in the consumer                   | App-specific                                                                            |
