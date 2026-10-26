@@ -1,0 +1,39 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.note {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* Sits just below a Dot (the Dot's wrapper is the positioning context). */
+.dotChip {
+  padding: 2px 8px;
+  background: #111827;
+  color: #fff;
+  border: 0;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  transform: scale(calc(1 / var(--dl-zoom, 1)));
+  transform-origin: 0 0;
+  position: absolute;
+  left: 0;
+  top: 100%;
+  margin-top: 6px;
+}
+
+.card {
+  padding: 10px 12px;
+  max-width: 190px;
+  background: #fff;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: grab;
+  user-select: none;
+}

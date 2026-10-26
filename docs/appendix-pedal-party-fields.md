@@ -1,8 +1,8 @@
 # Appendix: pedal-party field inventory
 
-Reference for what `pedal-party` stores and renders today, based on reading `pedal-party/app/src` (`data/*.ts`, `utils/board-url`, `components/board-*`). This is the input to the data model in [architecture-and-api.md](./architecture-and-api.md).
+Reference for what `pedal-party` stores and renders today, based on reading `pedal-party/app/src` (`data/*.ts`, `utils/board-url`, `components/board-*`). This is the input to the v1 scope in [architecture-and-api.md](./architecture-and-api.md).
 
-"Lib" means the field becomes a first-class prop or field in `dots-and-lines`. "App" means it is consumer-specific and goes in the opaque `data` slot (or is just rendered by the consumer's children).
+"Lib" means the field becomes a prop in `dots-and-lines` v1. "App" means it is consumer-specific: the consumer keeps it in its own data and renders it in its own children or `className`. "Not in v1" means the feature is deliberately not built (see section 2 of the architecture doc).
 
 ## How it is persisted
 
@@ -15,31 +15,31 @@ Reference for what `pedal-party` stores and renders today, based on reading `ped
 
 ## `placements[]` (rendered as pedals / pedalboards)
 
-| Field         | Type                      | Validation on decode   | Meaning                                                      | Lib / App                                           |
-| ------------- | ------------------------- | ---------------------- | ------------------------------------------------------------ | --------------------------------------------------- |
-| `id`          | `string`                  | must be string         | Stable identity; leads reference it                          | Lib (`Dot` `id`)                                    |
-| `kind`        | `'pedal' \| 'pedalboard'` | must be one of the two | Controls draw order (pedalboards render first, under pedals) | App (`data`)                                        |
-| `brand`       | `string`                  | must be string         | Label / `alt` text                                           | App (`data`)                                        |
-| `name`        | `string`                  | must be string         | Label / `alt` text                                           | App (`data`)                                        |
-| `widthCm`     | `number`                  | finite                 | Box width in board cm, set as CSS `width: Ncm`               | App (the child's CSS size; the library measures it) |
-| `heightCm`    | `number`                  | finite                 | Box height in board cm                                       | App (the child's CSS size; the library measures it) |
-| `image`       | `string`                  | must be string         | Image file name, resolved by `pedalImageSrc`                 | App (`data`)                                        |
-| `xCm`         | `number`                  | finite                 | Left edge in board cm                                        | Lib (`x`, px)                                       |
-| `yCm`         | `number`                  | finite                 | Top edge in board cm                                         | Lib (`y`, px)                                       |
-| `rotationDeg` | `number`                  | finite                 | Visual rotation only (+90 per click, mod 360)                | Out of scope for the first pass                     |
+| Field         | Type                      | Validation on decode   | Meaning                                                      | Lib / App                                     |
+| ------------- | ------------------------- | ---------------------- | ------------------------------------------------------------ | --------------------------------------------- |
+| `id`          | `string`                  | must be string         | Stable identity; leads reference it                          | App (used as the React `key`)                 |
+| `kind`        | `'pedal' \| 'pedalboard'` | must be one of the two | Controls draw order (pedalboards render first, under pedals) | App                                           |
+| `brand`       | `string`                  | must be string         | Label / `alt` text                                           | App                                           |
+| `name`        | `string`                  | must be string         | Label / `alt` text                                           | App                                           |
+| `widthCm`     | `number`                  | finite                 | Box width in board cm, set as CSS `width: Ncm`               | Not in v1 (a Dot is as large as its children) |
+| `heightCm`    | `number`                  | finite                 | Box height in board cm                                       | Not in v1 (a Dot is as large as its children) |
+| `image`       | `string`                  | must be string         | Image file name, resolved by `pedalImageSrc`                 | App                                           |
+| `xCm`         | `number`                  | finite                 | Left edge in board cm                                        | Lib (`Dot` `x`, in px)                        |
+| `yCm`         | `number`                  | finite                 | Top edge in board cm                                         | Lib (`Dot` `y`, in px)                        |
+| `rotationDeg` | `number`                  | finite                 | Visual rotation only (+90 per click, mod 360)                | Not in v1                                     |
 
 ## `leads[]` (rendered as cables)
 
-| Field          | Type                                                            | Validation / default on decode                     | Meaning                                                                                                                                  | Lib / App                                               |
-| -------------- | --------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| `id`           | `string`                                                        | must be string                                     | Identity                                                                                                                                 | Data only (the component takes no `id`)                 |
-| `points`       | `{ xCm, yCm }[]`                                                | at least 2 points, all finite                      | Orthogonal polyline in absolute board cm. First and last are the tips (attachment points). Interior points are the user-draggable elbows | Lib (`points`)                                          |
-| `startBinding` | `LeadEdgeBinding \| null`                                       | missing is `null`, malformed rejects the whole doc | Which placement edge the start tip is attached to                                                                                        | Lib (`start`)                                           |
-| `endBinding`   | `LeadEdgeBinding \| null`                                       | same                                               | Same, for the end tip                                                                                                                    | Lib (`end`)                                             |
-| `color`        | DS `Color`: `purple \| pink \| blue \| neutral \| red \| green` | invalid falls back to `neutral`                    | Stroke colour (a DS token name, not a CSS value)                                                                                         | App (`data`)                                            |
-| `tipDepthCm`   | `number`                                                        | finite and > 0, else falls back to `0.73`          | How far the plug sticks out of the jack                                                                                                  | App (the size of the tip node; the library measures it) |
+| Field          | Type                                                            | Validation / default on decode                     | Meaning                                                                                                                                  | Lib / App                                                                         |
+| -------------- | --------------------------------------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| `id`           | `string`                                                        | must be string                                     | Identity                                                                                                                                 | App (used as the React `key`)                                                     |
+| `points`       | `{ xCm, yCm }[]`                                                | at least 2 points, all finite                      | Orthogonal polyline in absolute board cm. First and last are the tips (attachment points). Interior points are the user-draggable elbows | Not in v1 (`ElbowLine` owns its route; you give it `initialStart` / `initialEnd`) |
+| `startBinding` | `LeadEdgeBinding \| null`                                       | missing is `null`, malformed rejects the whole doc | Which placement edge the start tip is attached to                                                                                        | Not in v1 (anchors)                                                               |
+| `endBinding`   | `LeadEdgeBinding \| null`                                       | same                                               | Same, for the end tip                                                                                                                    | Not in v1 (anchors)                                                               |
+| `color`        | DS `Color`: `purple \| pink \| blue \| neutral \| red \| green` | invalid falls back to `neutral`                    | Stroke colour (a DS token name, not a CSS value)                                                                                         | App (the consumer chooses the `className`)                                        |
+| `tipDepthCm`   | `number`                                                        | finite and > 0, else falls back to `0.73`          | How far the plug sticks out of the jack                                                                                                  | Not in v1 (tips)                                                                  |
 
-`LeadEdgeBinding`:
+`LeadEdgeBinding` (**not in v1**, kept here as a record of what anchors would need):
 
 | Field         | Type                                     | Validation             | Meaning                                     |
 | ------------- | ---------------------------------------- | ---------------------- | ------------------------------------------- |
@@ -57,7 +57,7 @@ Tip depth presets offered in the UI: `0.73, 0.8, 0.83, 0.88, 1.1, 1.19` cm. The 
 | `panYPx` | `number` | finite                   | Pan in screen px |
 | `zoom`   | `number` | finite, clamped to 0.1–2 | Unitless scale   |
 
-If `view` is absent (older links), it defaults to `{ 0, 0, 1 }`.
+If `view` is absent (older links), it defaults to `{ 0, 0, 1 }`. In `dots-and-lines` this is `View`, held in `SceneState`, not in any document.
 
 ## Rendering constants (not persisted)
 
@@ -86,24 +86,24 @@ These are not fields, but they define the data model's invariants.
 - **Overlay UI** (placement toolbar, lead toolbar) is counter-scaled with `scale(1 / zoom)` so it stays a constant on-screen size.
 - **Hit-testing** currently relies on `closest('[data-testid^="board-pedal-"]')` style selectors. Fine for an app, but the library should use its own data attributes and `stopPropagation` instead.
 
-## Pedal-party utils that become `core`
+## Pedal-party utils: ported, and not ported
 
-| pedal-party util                                                         | Becomes                                | Notes                                                                                   |
-| ------------------------------------------------------------------------ | -------------------------------------- | --------------------------------------------------------------------------------------- |
-| `seed-elbow-points`                                                      | `seedElbowPoints`                      |                                                                                         |
-| `normalize-elbow-points`                                                 | `normalizeElbowPoints`                 |                                                                                         |
-| `move-elbow-segment`                                                     | `moveElbowSegment`                     |                                                                                         |
-| `update-lead-tip` (`updateLeadTip`)                                      | `updateLineTip`                        |                                                                                         |
-| `update-lead-tip` (`syncLeadTipsToPlacements`)                           | `resolveLinePoints`                    | Anchored ends are resolved at render, not re-pinned in state                            |
-| `update-lead-tip` (`removePlacementFromLeads`)                           | `removeDotFromLines`                   | Gains a `delete` / `detach` policy                                                      |
-| `placement-edge-point`                                                   | `anchorPoint`, `projectOnDotEdge`      | Take a measured rectangle                                                               |
-| `snap-point-to-placement-edge`                                           | `snapToDotEdge`                        |                                                                                         |
-| `lead-tip-rect`                                                          | `tipOutward`                           | Tip rectangles go away: tips are consumer nodes                                         |
-| `visual-lead-points`                                                     | `resolveLinePoints`                    | Merged with the row above                                                               |
-| `build-elbow-svg-path`                                                   | `lineSegments`                         | Lines are HTML segments, not an SVG path                                                |
-| `lead-toolbar-anchor`                                                    | `lineAnchorPoint`                      | For overlay placement                                                                   |
-| `apply-board-view-action`                                                | `applyViewAction`                      |                                                                                         |
-| `normalize-board-input-event`, `resolve-board-input`, `data/board-input` | `resolveInput`, `defaultInputBindings` |                                                                                         |
-| `get-css-px-per-cm`                                                      | stays in the consumer                  | Not needed: CSS `cm` is a fixed 96/2.54 px, so pedal-party converts at its own boundary |
-| `board-url`                                                              | stays in the consumer                  | URL / lz-string is an app feature; core only exposes `parseDocument`                    |
-| `catalog-*`, `pedal-*`                                                   | stay in the consumer                   | App-specific                                                                            |
+| pedal-party util                                                         | v1                                      | Notes                                                                       |
+| ------------------------------------------------------------------------ | --------------------------------------- | --------------------------------------------------------------------------- |
+| `seed-elbow-points`                                                      | Ported: `seedElbowPoints`               |                                                                             |
+| `normalize-elbow-points`                                                 | Ported, internal to `core`              |                                                                             |
+| `move-elbow-segment`                                                     | Ported: `moveElbowSegment`              |                                                                             |
+| `update-lead-tip` (`updateLeadTip`)                                      | Ported without bindings: `moveElbowEnd` | The anchor half is dropped                                                  |
+| `build-elbow-svg-path`                                                   | Replaced: `lineSegments`                | Lines are HTML segments, not an SVG path                                    |
+| `lead-toolbar-anchor`                                                    | Ported inside `ElbowLine`               | Places `overlay`                                                            |
+| `apply-board-view-action`                                                | Ported: view maths in `core`            | Internal                                                                    |
+| `normalize-board-input-event`, `resolve-board-input`, `data/board-input` | Ported, internal                        | Fixed built-in bindings; not customisable in v1                             |
+| `update-lead-tip` (`syncLeadTipsToPlacements`)                           | **Not ported**                          | Needs anchors                                                               |
+| `update-lead-tip` (`removePlacementFromLeads`)                           | **Not ported**                          | Needs anchors                                                               |
+| `placement-edge-point`                                                   | **Not ported**                          | Needs anchors                                                               |
+| `snap-point-to-placement-edge`                                           | **Not ported**                          | Needs anchors and measured Dot sizes                                        |
+| `lead-tip-rect`                                                          | **Not ported**                          | Needs tips                                                                  |
+| `visual-lead-points`                                                     | **Not ported**                          | Needs tips                                                                  |
+| `get-css-px-per-cm`                                                      | Stays in the consumer                   | CSS `cm` is a fixed 96/2.54 px, so pedal-party converts at its own boundary |
+| `board-url`                                                              | Stays in the consumer                   | URL / lz-string is an app feature                                           |
+| `catalog-*`, `pedal-*`                                                   | Stay in the consumer                    | App-specific                                                                |

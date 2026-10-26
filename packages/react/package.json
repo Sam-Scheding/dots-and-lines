@@ -28,13 +28,12 @@
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit"
   },
-  "dependencies": {
-    "@dots-and-lines/core": "workspace:^"
-  },
   "peerDependencies": {
+    "@dots-and-lines/core": "workspace:^",
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@dots-and-lines/core": "workspace:^",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",

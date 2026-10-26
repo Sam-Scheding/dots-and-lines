@@ -1,182 +1,118 @@
 # dots-and-lines: architecture and API
 
-Status: **proposal**, for review before any code is written.
+Status: **v1 spec**. The exact props and types are in [react-exports.md](./react-exports.md).
 
-`dots-and-lines` is a headless toolkit for a draggable-boxes-and-connectors surface: things you drag around a plane, and lines you route between them. It ships **behaviour and geometry, never visuals**. Consumers supply every pixel of styling.
+`dots-and-lines` is a headless toolkit for a draggable-things-and-lines surface: things you drag around a plane, and orthogonal lines you draw and edit on it. It ships **behaviour and geometry, almost never visuals**. Consumers supply the styling. The one exception is a Dot's selected ring (section 7), which can be switched off.
 
-It is extracted from the bespoke implementation in `pedal-party`, which will eventually be migrated onto it. The field-by-field inventory of that implementation is in [appendix-pedal-party-fields.md](./appendix-pedal-party-fields.md).
+It is extracted from the bespoke implementation in `pedal-party`, which is the first intended consumer. The field-by-field inventory of that implementation is in [appendix-pedal-party-fields.md](./appendix-pedal-party-fields.md).
 
-## 1. Decisions at a glance
+## 1. What v1 is
 
-| #   | Question                | Decision                                                                                                                                                                                                                            |
-| --- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Is a `Scene` integral?  | **Yes, and it is required.** `Dot` and `ElbowLine` must live inside one.                                                                                                                                                            |
-| 2   | Fields from pedal-party | Inventoried in the appendix. Position and anchors become props; brand, name, image and colour become opaque `data`. Sizes are not stored (see 3).                                                                                   |
-| 3   | Dot size                | **Measured, never passed in.** A Dot is as large as its children; the library measures it (and line tips) with a `ResizeObserver`.                                                                                                  |
-| 4   | Hook or Context?        | **Controlled components + a state hook for the document** (dots and lines). Camera and mode live in a **stable handle** from `useSceneState()`, passed to `Scene`. No provider.                                                     |
-| 5   | Units                   | **CSS px at zoom 1.** No unit prop. pedal-party converts cm to px at its own boundary.                                                                                                                                              |
-| 6   | Styling                 | No `className` / `style` on any component, and nothing is ever spread onto them. The one exception is `ElbowLine.className`, applied to every segment.                                                                              |
-| 7   | v1 surface              | `Scene`, `useSceneState`, `useSceneView`, `useSceneMode`, `Dot`, `ElbowLine`, `useDotsAndLines`, and a pure `core`. The exact props and types are in [react-exports.md](./react-exports.md). Rotation and `useDot` are out for now. |
+Three things, plus a state handle:
 
-## 2. Question 1: is a `Scene` integral?
+- **`Scene`**: a clipped viewport with pan and zoom. Everything else lives inside one.
+- **`Dot`**: a draggable wrapper around whatever the consumer renders. It is exactly as large as its children.
+- **`ElbowLine`**: an orthogonal path made of HTML segment elements. The consumer gives it two initial points; it starts as an L (or a straight line) and the **library owns its route** from then on. It can be selected (it takes focus), and then its segments and ends can be dragged.
+- **`SceneState`**: a stable handle (from `useSceneState()`) that holds the camera and the mode. Passed to `Scene`, readable from anywhere.
 
-**Yes.** The alternative, letting Dots and Lines sit anywhere, breaks things that the pedal-party implementation depends on:
+Lines are **free-floating**. An `ElbowLine` is not connected to any Dot, and moving a Dot does not move a line. Its initial points are read once, when it mounts; changing them later does nothing (change the component's `key` to start over). Consumers cannot read, save or restore an edited route in v1.
 
-1. **Coordinate system.** `x`/`y` need a common origin. Pointer events arrive in client coordinates, and dragging needs `client → world`:
-   `world = (client − sceneRect.topLeft − pan) / zoom`. Only a shared ancestor can own that mapping.
+| #   | Decision                                                                                                                                                                                                                                                                                                   |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | A `Scene` is required. `Dot` and `ElbowLine` must live inside one.                                                                                                                                                                                                                                         |
+| 2   | `Dot` keeps its name. `Scene` is the viewport.                                                                                                                                                                                                                                                             |
+| 3   | Coordinates are **CSS px at zoom 1**. There is no unit prop.                                                                                                                                                                                                                                               |
+| 4   | Camera and mode live in a **stable handle** from `useSceneState()`, passed to `<Scene state={sceneState}>`. No provider.                                                                                                                                                                                   |
+| 5   | `Dot` is **controlled** by props. `ElbowLine` is **uncontrolled**: it takes `initialStart` / `initialEnd`, then owns its route.                                                                                                                                                                            |
+| 6   | No `className` or `style` on any component, and nothing is ever spread onto them. The one exception is `ElbowLine.className`, applied to every segment.                                                                                                                                                    |
+| 7   | Types come from `@dots-and-lines/core` and are **not re-exported** by `@dots-and-lines/react`.                                                                                                                                                                                                             |
+| 8   | Line editing (drag segments and ends) and connect mode (click, click to create a line) are in v1.                                                                                                                                                                                                          |
+| 9   | **Selection is native focus.** `Scene`, `Dot` and `ElbowLine` are focusable (`tabindex="-1"`); an element is selected while focus is inside it. A selected Dot draws a ring (`selectable={false}` turns it off); `useSelected()` reads it in JS. There is no selection state in `SceneState`, and no `id`. |
+| 10  | Reading state in React is one selector hook, `useScene(sceneState, select)`.                                                                                                                                                                                                                               |
+
+## 2. Not built in v1
+
+These are deliberately left out, **along with any supporting code**. Do not add them "just in case"; each one has a cost and a later version may design it differently.
+
+- **Anchors / bindings between lines and Dots** (`DotAnchor`, anchored line ends, edge and `t`), and everything that existed to support them:
+  - measuring Dot size with a `ResizeObserver`, and the Dot rectangle registry
+  - snapping line ends to Dot edges
+  - resolving anchored ends at render time, and `syncLinesToDots`
+  - any policy for what happens to a line when its Dot is removed
+- **Line tips**, and their orientation. A later version may add `tipStart` / `tipEnd` props that let a consumer render a node at each end of a line. That would let `pedal-party` draw plugs without `dots-and-lines` knowing what a plug is.
+- **Dot `width` / `height` props and rotation.** A Dot is as big as its children.
+- **Selection state in `SceneState`**, `id`s, and selecting from outside the Scene. Selection is the browser's focus, so it is lost when focus moves to a control outside the Scene, and there is no `getSelection` or `onSelect`. Controls that act on the selection belong in an `overlay`.
+- **Multi-select, box select and keyboard selection.** The wrappers are `tabindex="-1"`, so they are not in the Tab order.
+- **A state hook for the document**: `useDotsAndLines`, `DotsAndLinesDocument`, `DotData`, `ElbowLineData`, `parseDocument`, and the opaque `data` slots. Consumers keep their own data.
+- **`useDot`** and any "hook flavour" of the components, and prop-getter helpers.
+- **Customisable input bindings** (`inputBindings`, the `InputBinding` types). v1 has one built-in set, switched on or off with `panZoom`.
+- **`ElbowLine` props** `startTip`, `endTip`, `cornerRadius`, `classNames`.
+- **Reading or restoring a line's edited route**: no `points` prop and no `onChange`. Together with the next item, this is what keeps a line's geometry valid by construction.
+- **Controlled line ends** (`start` / `end` props that move a line when they change, so it can follow a Dot), and route options such as `axis` and `bend`. They can be added later without changing `initialStart` / `initialEnd`.
+- **Keyboard accessibility.**
+
+## 3. Why a `Scene` is required
+
+Letting Dots and Lines sit anywhere would break things `pedal-party` depends on:
+
+1. **Coordinate system.** `x`/`y` need a common origin. Pointer events arrive in client coordinates, and dragging needs `client → world`: `world = (client − sceneRect.topLeft − pan) / zoom`. Only a shared ancestor can own that mapping.
 2. **Pan and zoom.** The camera is a single `translate(pan) scale(zoom)` on a wrapper around all content. It cannot be applied per-Dot without desyncing lines from dots.
-3. **Snapping and anchoring.** While a line tip is dragged, it needs the measured rectangle of every Dot in the same space, and anchored line ends are drawn from those rectangles. `Scene` holds the registry that Dots report their measured rectangle into.
-4. **Drawing new lines.** pedal-party's "click, click" draw mode needs a surface that receives clicks on empty space.
-5. **Containing block.** Absolutely-positioned Dots need a `position: relative; overflow: hidden` parent that clips and sizes the viewport.
+3. **Creating lines.** Connect mode needs a surface that receives clicks on empty space.
+4. **Containing block.** Absolutely-positioned Dots need a `position: relative; overflow: hidden` parent that clips and sizes the viewport.
 
-What `Scene` is **not**: it does not render a shared line layer. Each `ElbowLine` renders its own absolutely-positioned HTML segment elements, so stacking order between lines and dots is just JSX order. (pedal-party's single lead layer always sits above every pedal. That becomes a choice instead of a constraint.)
+A Scene fills its parent. It takes no `className` or `style`, so its size and background come from the element the consumer wraps it in. Each `ElbowLine` renders its own absolutely-positioned HTML segment elements, so stacking order between lines and Dots is just JSX order.
 
-A Scene fills its parent. It takes no `className` or `style`, so its size and background come from the element the consumer wraps it in. Camera and mode state live in a handle the consumer creates with `useSceneState()` and passes in as `state`, so the Scene's own chrome (toolbars, a zoom label, an "Add lead" button) can sit anywhere in the app, not only inside the Scene.
+## 4. Packages
 
-## 3. Packages
+| Package                           | Contents                                                                                                                             | Depends on                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------- |
+| `@dots-and-lines/core`            | Types, the scene state store, pan/zoom maths, the built-in input bindings, elbow geometry and editing helpers. **No DOM, no React.** | nothing                   |
+| `@dots-and-lines/react`           | `Scene`, `Dot`, `ElbowLine`, `useSceneState`, `useScene`, pointer interaction                                                        | peer `core`, peer `react` |
+| `@dots-and-lines/vue`, `/angular` | Future adapters, same shape                                                                                                          | `core`                    |
 
-| Package                           | Contents                                                                                                                                                           | Depends on               |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
-| `@dots-and-lines/core`            | Types, document schema and parser, elbow routing and editing, snapping, anchor maths, pan/zoom maths, input bindings, the scene state store. **No DOM, no React.** | nothing                  |
-| `@dots-and-lines/react`           | `Scene`, `useSceneState`, `useSceneView`, `useSceneMode`, `Dot`, `ElbowLine`, `useDotsAndLines`, pointer interaction                                               | `core`; peer `react@^19` |
-| `@dots-and-lines/vue`, `/angular` | Future adapters, same shape                                                                                                                                        | `core`                   |
+`@dots-and-lines/react` exports only its own components and hooks. Types that come from `core` (`Point`, `View`, `Mode`, `SceneState`) are imported from `@dots-and-lines/core`, so `core` must be installed alongside `react`, which is why it is a peer dependency.
 
-pedal-party's example import `import { Dot, ElbowLine } from 'dots-and-lines'` becomes `import { Dot, ElbowLine } from '@dots-and-lines/react'`.
-
-**Types are not re-exported.** `@dots-and-lines/react` exports only its own components and hooks. Types that come from `core` (`Point`, `View`, `DotAnchor`, `InputBinding`, `DotsAndLinesDocument`, and so on) are imported from `@dots-and-lines/core`, so a consumer's imports always show which package a thing lives in, and `react` never forwards `core` exports.
-
-The pointer-interaction code (drag state machines) is the largest piece that is not pure geometry. For v1 it lives in `react`, but is written as plain TypeScript controllers (functions or classes taking `getState` and `commit` callbacks, no React imports) so that extracting it into `core` when the second adapter starts is a move, not a rewrite.
+The pointer-interaction code (drag state machines) is the largest piece that is not pure geometry. For v1 it lives in `react`, but is written as plain TypeScript controllers (functions taking `getState` and `commit` callbacks, no React imports) so that moving it into `core` when a second adapter starts is a move, not a rewrite.
 
 Before the first publish, register the `@dots-and-lines` npm org. `npm view` returns 404 for all three package names today, but that does not prove the scope itself is free.
 
-## 4. Vocabulary
+## 5. Vocabulary
 
-| Term          | Meaning                                                                                                                                                         |
-| ------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Scene**     | The viewport and coordinate space that holds Dots and lines. Clips its content and applies the camera. Its camera and mode state live in a `SceneState` handle. |
-| **Dot**       | A draggable wrapper around the consumer's visuals. It has a position and is exactly as large as its children. (See open question 1.)                            |
-| **ElbowLine** | An orthogonal path made of HTML segment elements, connecting two ends. Each end is either free or anchored to a Dot edge.                                       |
-| **Anchor**    | `{ dotId, edge, t }`: a point on a Dot's edge, `t` in [0,1] along it.                                                                                           |
-| **Tip**       | A React node rendered at one end of a line (a "plug"). Passed as `startTip` / `endTip`; the library measures and orients it.                                    |
-| **World px**  | The coordinate unit: CSS px at zoom 1.                                                                                                                          |
-| **View**      | `{ panX, panY, zoom }`. Pan is in screen px, zoom is unitless.                                                                                                  |
-| **Mode**      | `'select'` (drag and edit) or `'connect'` (click twice to create a line).                                                                                       |
+| Term           | Meaning                                                                                                                                |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| **Scene**      | The viewport and coordinate space that holds Dots and lines. Clips its content and applies the camera.                                 |
+| **SceneState** | The stable handle holding the camera (`View`) and the `Mode`. Created by `useSceneState()`, passed to `Scene`.                         |
+| **World**      | The inner element of a Scene that carries the pan and zoom transform. Everything the consumer passes as `children` is drawn inside it. |
+| **Dot**        | A draggable wrapper around the consumer's visuals. It has a position and is exactly as large as its children.                          |
+| **ElbowLine**  | An orthogonal path drawn as HTML segment elements. Starts as an L between two initial points; the library owns its route afterwards.   |
+| **Handle**     | A consumer-rendered node (`handle` prop) placed at each segment midpoint and each end of a selected line, for dragging.                |
+| **View**       | `{ panX, panY, zoom }`. Pan is in screen px, zoom is unitless.                                                                         |
+| **Mode**       | `'select'` (drag and edit) or `'connect'` (click twice to create a line).                                                              |
 
-## 5. Question 4: hook vs Context
+## 6. State ownership
 
-### The real question
+Two kinds of state, with different owners:
 
-"Hook or Context" is really **who owns the state**. pedal-party's constraints:
+- **Dot positions** belong to the **consumer**. `Dot` takes `x` / `y` and calls `onMove`. The library never stores them, so the consumer's own state, store, or URL sync is the single source of truth.
+- **A line's route** belongs to the **`ElbowLine`**. The consumer supplies `initialStart` / `initialEnd` (typically from `onConnect`) and the line owns the route from then on. This is what makes invalid paths unrepresentable: consumers never hand it a list of points. The cost is that the consumer cannot read or save an edited route in v1.
+- **Camera and mode** belong to a **`SceneState` handle**. `useSceneState({ defaultView, zoom })` returns an object that never changes identity: `getView`, `setView`, `getMode`, `setMode`, `panBy`, `zoomBy`, `subscribe`. The consumer passes it to `<Scene state={sceneState}>` and can hand it to anything else (a toolbar, an "Add lead" button, URL sync) with no provider.
 
-- State is a **serialisable document** that becomes a shareable URL.
-- Each dot carries **app data** (brand, name, image) the library knows nothing about.
-- **Other UI mutates it**: a catalog sidebar adds dots, a toolbar removes lines, URL sync reads and writes it.
-- Moving a dot has **cascading effects** (bound line tips must re-pin).
+Reading from the handle does not re-render anything. Components that need to react use `useScene(sceneState, select)`, for example `useScene(sceneState, (s) => s.getView().zoom)`, and re-render only when the picked value changes. Because the handle is stable, calling `useSceneState()` in a top-level component does not re-render that component on pan or zoom. The store itself is plain code in `core`, so other frameworks can reuse it.
 
-### Why not option (b), a Provider that owns state through JSX children
+`Scene` also provides an internal context that `Dot` and `ElbowLine` read: the same handle and `clientToWorld(clientX, clientY)`. Consumers never touch the context.
 
-```tsx
-<DotsAndLinesProvider>
-  {/* where do x and y come from? */}
-  <Dot>
-    <div />
-  </Dot>
-</DotsAndLinesProvider>
-```
+**Selection** is not library state: it is the browser's focus. A Dot or line is selected while focus is inside it, so the library only has to make its elements focusable and tell its own overlay and handles whether focus is inside (`onFocus` / `onBlur`, which bubble in React). The consumer styles it with `:focus-within`, and reads it in JS with `useSelected()` from inside the element. The cost is that selection follows focus: clicking a control outside the Scene deselects, so controls that act on a selection live in an `overlay`.
 
-Your instinct was right. If Dots self-register into a Provider:
+Persisting the camera (as `pedal-party` does in its share links) is `sceneState.subscribe(() => save(sceneState.getView()))`.
 
-- The state is **only reachable from inside the tree**, so a sidebar outside it cannot add a dot, and URL sync has nothing to read.
-- A serialisable document would have to be reassembled from whatever mounted, in mount order, with no place for app data.
-- Dots appearing and disappearing through React mounting makes mounting the source of truth, which is backwards for a data-driven app.
-- It does not port: Vue and Angular would each need their own self-registration scheme.
-
-### Decision
-
-Three layers, each usable without the one above it:
-
-```text
-┌───────────────────────────────────────────────┐
-│ useDotsAndLines()  (react, optional)          │  document state + actions, thin wrapper over core
-├───────────────────────────────────────────────┤
-│ Scene / Dot / ElbowLine    (react)            │  Dot and ElbowLine controlled by props; Scene takes a state handle
-├───────────────────────────────────────────────┤
-│ @dots-and-lines/core                          │  pure data + functions, framework-free
-└───────────────────────────────────────────────┘
-```
-
-1. **`core`** defines the document and pure transitions, for example `moveDot(doc, id, x, y)`. This is the part every framework shares.
-2. **`Dot` and `ElbowLine` are controlled.** `Dot` takes `x`/`y` and calls `onMove`. `ElbowLine` takes `points` and calls `onChange`. They hold no document state.
-3. **Camera and mode live in a stable handle.** `useSceneState({ defaultView, zoom })` returns a `SceneState` object that never changes identity: `getView`, `setView`, `getMode`, `setMode`, `subscribe`. The consumer passes it to `<Scene state={scene}>` and can hand it to anything else, such as a toolbar or a URL-sync effect, with no provider. Reading from the handle does not re-render anything; components that need to react use `useSceneView(scene)` or `useSceneMode(scene)`. The store itself is plain code in `core`.
-4. **`useDotsAndLines`** is a store for the document (dots and lines): it applies core transitions and exposes `state` plus actions. It supports uncontrolled (`defaultValue`) and controlled (`value` + `onChange`) use, so it can sit on top of `useState`, Zustand, or a URL-synced store.
-
-A consumer who doesn't want the hook can call core's pure functions in their own reducer, as pedal-party's `App` does today.
-
-### Where Context is used
-
-`Scene` provides a context that `Dot` and `ElbowLine` read. It carries:
-
-- the same `SceneState` handle the consumer passed in
-- `clientToWorld(clientX, clientY)`
-- the registry of measured Dot rectangles, used for anchoring and snapping
-
-It does not hold the document, and consumers never need to touch it: outside code uses the handle, not the context. There is no public provider.
-
-### Why lines carry `points`, not just `from` and `to`
-
-You asked whether the line "also encodes the path segments". **Yes.** The elbows are user-draggable and are part of what is shared, so they must be persisted. Anchors alone say where the ends attach, not how the path bends. (Auto-routing when `points` is omitted is a possible later feature; it would use core's `seedElbowPoints`.) Because Dot sizes are measured, the first and last points are overridden by any anchor at render time; see open question 2.
-
-## 6. Data model (`core`)
-
-The types, with examples, are in [react-exports.md](./react-exports.md#types). Summary of what changed from pedal-party:
-
-- `DotData` is `{ id, x, y, data? }`. **No width, height or rotation.** Width and height come from the children and are measured at runtime; rotation is out of scope for the first pass.
-- `ElbowLineData` is `{ id, type: 'elbow', points, start, end, data? }`. **No tip depth or width.** Tips are React nodes the library measures.
-- `DotsAndLinesDocument` is `{ version, dots, lines }`. **No `view`.** The camera lives in `SceneState`.
-- Colour, kind, brand, name and image live in `data`. The library never inspects it.
-- **Persistence stays with the app.** `core` exports `parseDocument(unknown): Document | null` (validation and defaults, the same lenient rules as pedal-party's decoder). URL and `lz-string` encoding stay in the consumer.
-- **Migration.** pedal-party's existing `v: 1` share links keep working through a small converter in pedal-party, not in this library. It has to convert cm to px, and it no longer needs `widthCm` / `heightCm` in the document.
-
-### Pure functions in `core`
-
-Ported from pedal-party's `utils/` with their specs. Full mapping is in the appendix. Rectangles (`Rect`) are measured Dot rectangles supplied by the caller, so none of this touches the DOM.
-
-```ts
-// document transitions
-moveDot(doc, id, x, y): Doc
-removeDot(doc, id, { lines: 'delete' | 'detach' }): Doc
-
-// line editing
-seedElbowPoints(a: Point, b: Point): Point[]
-moveElbowSegment(points, segmentIndex, dx, dy): Point[]
-updateLineTip(line, 'start' | 'end', point, anchor): ElbowLineData
-resolveLinePoints(line, dotRects, tipDepths): Point[]  // anchors override stored end points
-
-// geometry
-anchorPoint(rect: Rect, anchor): Point
-snapToDotEdge(point, dotRects, threshold): { point; anchor; distance } | null
-lineSegments(points): { orientation: 'h' | 'v'; x; y; length }[]
-tipOutward(end, adjacent, anchor): Edge
-
-// camera and scene state
-createSceneState({ defaultView, zoom }): SceneState   // the stable handle; framework-free
-applyViewAction(view, action, limits?): View
-resolveInput(event, bindings): InputAction | null
-defaultInputBindings
-```
-
-Gone, compared with the earlier draft: `syncLinesToDots` (anchored ends are resolved at render, not re-pinned in state), `rotateDot`, `buildElbowPath` (lines are HTML segments, not an SVG path) and `tipRect`.
-
-## 7. React API (v1)
-
-Props, arguments, return values and types are in [react-exports.md](./react-exports.md). This section covers rendering and usage.
+## 7. Rendering and behaviour
 
 ### `Scene`
 
-Renders a root element that fills its parent (`position: relative; overflow: hidden; touch-action: none`) containing a "world" element that carries the camera:
+Renders a root element that fills its parent (`position: relative; overflow: hidden; touch-action: none`) containing the world:
 
 ```html
-<div data-dl-scene>
+<div data-dl-scene data-dl-mode="select">
   <div
     data-dl-world
     style="transform: translate(…) scale(…); transform-origin: 0 0"
@@ -186,19 +122,29 @@ Renders a root element that fills its parent (`position: relative; overflow: hid
 </div>
 ```
 
-Everything passed as `children` is drawn **inside the world**, so it is panned and scaled. `--dl-zoom` is set on the world element so consumers can counter-scale overlays (`scale(calc(1 / var(--dl-zoom)))`), as pedal-party does for its toolbars.
+The Scene root is itself focusable (`tabindex="-1"`, `outline: none`), so a press on the background takes focus off whatever was selected. Presses that start a space-pan or a connect click are cancelled before the browser would move focus, so they leave the selection alone.
+
+`data-dl-mode` mirrors the current mode so consumers can style it (for example a crosshair cursor in `'connect'`). `--dl-zoom` is set on the world element so consumers can counter-scale handles and overlays (`scale(calc(1 / var(--dl-zoom)))`), as `pedal-party` does for its toolbars.
+
+Built-in pan and zoom (on by default, `panZoom={false}` turns it off) uses `pedal-party`'s bindings: ctrl/cmd + wheel zooms about the cursor, shift + wheel pans horizontally, plain wheel pans, and space + drag pans. Because plain wheel pans, a Scene captures wheel events, so it will not let the page scroll while the pointer is over it.
+
+**Connect mode.** While `mode === 'connect'`, a pointer-down inside the Scene does not start a Dot drag. The first click is the start, the second is the end; the Scene calls `onConnect({ start, end })` and returns to `'select'`. The consumer stores those two points and renders an `ElbowLine` with them as `initialStart` / `initialEnd`.
 
 ### `Dot`
 
-Renders an absolutely-positioned wrapper at `left: 0; top: 0` moved with `transform: translate(x, y)`, sized `width: max-content`, with `touch-action: none`. The wrapper sizes to its children, and a `ResizeObserver` reports the measured size to `Scene`.
+Renders an absolutely-positioned wrapper at `left: 0; top: 0`, moved with `transform: translate(x, y)` and sized `width: max-content`. Positioning with `transform` rather than `left` / `top` avoids a real layout problem: an absolutely-positioned element's available width shrinks as `left` grows, so content near the right edge would wrap. With `max-content` and a transform, a Dot never squeezes its children.
 
-Positioning with `transform` instead of `left`/`top` avoids a real layout problem: an absolutely-positioned element's available width shrinks as `left` grows, so content near the right edge would wrap. `max-content` plus a transform means a Dot never squeezes its children.
+Dragging is tracked with window-level pointer listeners (not pointer capture, which would swallow clicks on buttons inside a Dot), with pixel deltas divided by zoom. A press only becomes a drag after 3px of movement, and the click that follows a real drag is suppressed. Dragging starts only from the children, not from `overlay`, so buttons in an overlay keep working.
 
-Pointer capture handles drag. Consumer-supplied children are never given the drag handlers.
+The wrapper is focusable (`tabindex="-1"`), so pressing the children focuses it, which selects the Dot. While focus is inside, `overlay` is rendered and the wrapper draws a ring (`outline: 2px solid var(--dl-select-color, #3b82f6)`, set inline from the tracked focus state because inline styles can't express `:focus-within`); otherwise neither. `autoFocus` focuses the Dot on mount (without scrolling the clipped Scene).
+
+`selectable` (default `true`) turns this off. With `selectable={false}` the wrapper has no tabindex and draws no ring. That is for children that handle selection themselves, such as a Card with `tabindex="0"`: the browser focuses the Card, its own `:focus` / `:active` styles apply, and the Dot's ring doesn't stack on top. `overlay` and `useSelected()` still follow focus inside the Dot.
+
+The ring is the library's one visual. It exists because selection by default should be visible without any CSS, and the colour is a CSS variable so it stays themeable. A consumer who wants a different look sets `selectable={false}` and styles `[data-dl-dot]:focus-within`.
 
 ### `ElbowLine`
 
-Renders one absolutely-positioned HTML element per segment, each with `className` applied. Each segment's length and position are set inline. The thickness is up to the consumer; the proposal is a single CSS custom property, read by the library's inline styles on the segment element itself, so one class is enough:
+Starts as an L between `initialStart` and `initialEnd` (`seedElbowPoints`), or a straight line if they share an x or y. It renders one absolutely-positioned HTML element per segment, each with `className` applied. Each segment's length and position are set inline; the thickness comes from the consumer through one CSS custom property read by the segment's own inline style, so one class is enough:
 
 ```css
 .lead {
@@ -208,120 +154,93 @@ Renders one absolutely-positioned HTML element per segment, each with `className
 }
 ```
 
-`startTip` and `endTip` are wrapped in a positioned element at each end. The library measures them, places the attach point on the Dot edge, and turns them so they point away from that edge. Authoring convention (open question 3): design the tip as it would look on the **right** edge of a Dot, extending to the right, and the library rotates it by multiples of 90° for the other edges.
+Each segment also has an invisible, thicker hit element (owned by the library) that receives pointer events, so a thin line is still easy to click. It has no tabindex of its own, so pressing it focuses the line's root, which selects the line.
 
-### Usage with the hook
+While selected (focus is inside the root, which also contains the handles and the overlay), the line renders the `handle` node at every segment midpoint and every end, plus `overlay` at the line's anchor point. Dragging a midpoint handle moves that segment (`moveElbowSegment`), and dragging a segment at either end of the line sideways inserts a new one; dragging an end handle moves that end (`moveElbowEnd`). Edits are measured from the route at pointer-down, and the result stays in the line's own state. There is no change callback.
+
+## 8. Usage
 
 ```tsx
-import {
-  Scene,
-  Dot,
-  ElbowLine,
-  useDotsAndLines,
-  useSceneState,
-} from '@dots-and-lines/react';
+import { Scene, Dot, ElbowLine, useSceneState } from '@dots-and-lines/react';
+import type { Point } from '@dots-and-lines/core';
+
+type Lead = { id: string; start: Point; end: Point };
 
 function Board() {
-  const scene = useSceneState({ defaultView: initialView });
-  const { state, actions, selectedLineId } = useDotsAndLines<
-    PedalData,
-    LeadData
-  >({ defaultValue: initialDocument });
+  const sceneState = useSceneState({ defaultView: initialView });
+  const [pedals, setPedals] = useState(initialPedals); // consumer-owned
+  const [leads, setLeads] = useState<Lead[]>(initialLeads);
 
   return (
     <div className={styles.board}>
-      <AddLeadButton scene={scene} /> {/* outside the Scene; no provider */}
-      <Scene state={scene} onConnect={actions.addLine}>
-        {sortBoardsFirst(state.dots).map((dot) => (
+      <AddLeadButton sceneState={sceneState} />{' '}
+      {/* outside the Scene; no provider */}
+      <Scene
+        state={sceneState}
+        onConnect={(lead) => {
+          setLeads((all) => [...all, { id: crypto.randomUUID(), ...lead }]);
+        }}
+      >
+        {pedals.map((pedal) => (
           <Dot
-            key={dot.id}
-            id={dot.id}
-            x={dot.x}
-            y={dot.y}
-            onMove={(x, y) => actions.moveDot(dot.id, x, y)}
-            overlay={<DotToolbar onRemove={() => actions.removeDot(dot.id)} />}
+            key={pedal.id}
+            x={pedal.x}
+            y={pedal.y}
+            onMove={(x, y) => movePedal(pedal.id, x, y)}
+            overlay={<PedalToolbar id={pedal.id} />} // shown while the Dot is selected
           >
-            <img
-              className={styles.pedal}
-              src={pedalImageSrc(dot.data)}
-              alt=""
-            />
+            <img className={styles.pedal} src={pedal.image} alt="" />
           </Dot>
         ))}
-        {state.lines.map((line) => (
+        {leads.map((lead) => (
           <ElbowLine
-            key={line.id}
-            className={styles[line.data?.color ?? 'neutral']}
-            points={line.points}
-            start={line.start}
-            end={line.end}
-            startTip={<Plug />}
-            endTip={<Plug />}
-            selected={line.id === selectedLineId}
-            onSelect={() => actions.selectLine(line.id)}
-            onChange={(next) => actions.updateLine(line.id, next)}
+            key={lead.id}
+            autoFocus // a new lead starts selected, ready to edit
+            className={styles.lead}
+            initialStart={lead.start}
+            initialEnd={lead.end}
+            handle={<span className={styles.handle} />}
           />
         ))}
       </Scene>
     </div>
   );
 }
+
+function AddLeadButton({ sceneState }: { sceneState: SceneState }) {
+  // Does not subscribe, so it never re-renders on pan or zoom.
+  return (
+    <button onClick={() => sceneState.setMode('connect')}>Add lead</button>
+  );
+}
 ```
 
-Dots draw in array order (there is no `zIndex` prop), so the consumer controls layering by ordering, as pedal-party does with boards under pedals.
+Dots draw in array order (there is no `zIndex` prop), so the consumer controls layering by ordering, as `pedal-party` does with boards under pedals.
 
-`useSceneState()` is called in `Board`, but because the handle never changes identity, `Board` does not re-render when the camera moves. Persisting the camera, the "Add lead" button, and a zoom label are shown in [react-exports.md](./react-exports.md#scenestate).
+## 9. Differences from pedal-party
 
-### Usage without the hook (core only)
+| Difference                                                                  | Why                                                                               |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Coordinates are CSS px, not cm                                              | The library has no unit concept. CSS `cm` is a fixed 96/2.54 px                   |
+| Lines are not bound to pedals                                               | Anchors are not built in v1 (section 2)                                           |
+| A line's route is owned by `ElbowLine`, not passed in as `points`           | Invalid paths cannot be expressed; `initialStart` / `initialEnd` are all you give |
+| Dot size is not stored; a Dot is as large as its children                   | The library wraps arbitrary children                                              |
+| Lines are HTML segment elements, not an SVG layer                           | Consumers style them with one `className`, and corner rounding is `border-radius` |
+| Camera and mode live in a stable `SceneState` handle                        | No provider, and camera changes do not re-render the owner                        |
+| Hit-testing uses `data-dl-*` attributes and `stopPropagation`, not test ids | Test ids are not an API                                                           |
 
-```tsx
-const scene = useSceneState();
-const [doc, setDoc] = useState(initialDocument);
+### What this means for migrating pedal-party
 
-<Scene state={scene}>
-  {doc.dots.map((dot) => (
-    <Dot
-      key={dot.id}
-      id={dot.id}
-      x={dot.x}
-      y={dot.y}
-      onMove={(x, y) => setDoc((d) => moveDot(d, dot.id, x, y))}
-    >
-      …
-    </Dot>
-  ))}
-  {/* lines as above */}
-</Scene>;
-```
+`pedal-party` cannot move onto v1 as-is, for two reasons:
 
-## 8. Deliberate differences from pedal-party
+- Its leads follow pedals and snap to their edges, but v1 lines are free-floating and take their endpoints only once.
+- It saves each lead's points in share links, but v1 gives the consumer no way to read or restore an edited route.
 
-| Difference                                                                                       | Why                                                                                              |
-| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| Coordinates are CSS px, not cm                                                                   | The library has no unit concept. CSS `cm` is a fixed 96/2.54 px, so pedal-party converts exactly |
-| Dot size is measured, not stored (`widthCm` / `heightCm` are not in the document)                | A Dot wraps arbitrary children, whose size the library cannot know in advance                    |
-| Anchored line ends are resolved at render, not re-pinned in state                                | Needed once sizes are measured rather than stored                                                |
-| Lines are HTML segment elements, not an SVG layer                                                | Consumers style them with one `className`, and corner rounding is `border-radius`                |
-| Tips are React nodes (`startTip` / `endTip`), not fixed rectangles                               | Same pattern as `overlay`; no tip size props                                                     |
-| Snap threshold is a fixed screen distance (`px / zoom` in world px)                              | pedal-party divides by `pxPerCm` only, so on-screen distance varies with zoom                    |
-| Camera and mode live in a stable `SceneState` handle, not in the document or app state           | Fewer props, no provider, and camera changes do not re-render the owner                          |
-| Consumer assigns ids; the hook defaults to `crypto.randomUUID()`                                 | No hidden environment assumptions in `core`                                                      |
-| Hit-testing uses `data-dl-*` attributes and `stopPropagation`, not `closest('[data-testid^=…]')` | Test ids are not an API                                                                          |
-| `removeDot` offers `delete` or `detach` for attached lines                                       | pedal-party only deletes; default stays `delete`                                                 |
+Closing those gaps is the next design step (section 10), and the likely shape is controlled `start` / `end` plus a way to read and restore a route, not built-in anchors.
 
-## 9. Open questions
+## 10. Build order
 
-1. **Name `Dot`.** It now wraps whatever children it is given, so it is a wrapper, not a point or a box. Keep `Dot` (it matches the package name), or something like `Node` / `Draggable`?
-2. **Anchors and measured sizes.** With sizes measured, anchored end points in `points` are derived, so stored values can go stale (for example when a Dot moves). Proposal: render from the anchor and ignore the stored end point, and write fresh points on the next `onChange`. Cleaner alternative: `points` stores only the interior waypoints, and anchored ends are never stored. That changes `moveElbowSegment` and `updateLineTip`, and the share-link format.
-3. **Tip orientation convention.** Proposed: author a tip for the right edge of a Dot and let the library rotate it by multiples of 90°. The alternative is passing the edge to a render function (`startTip={(edge) => …}`).
-4. **Line styling gaps.** One `className` on thin HTML segments leaves open: the thickness variable (`--dl-line-size`, proposed above), a larger invisible hit area for clicking a 2px line, the drag handles on segments (pedal-party shows a dot at each segment midpoint), and selected styling beyond switching `className` yourself. A `handle` node prop, like `startTip`, is the obvious fit.
-5. **Removing a Dot with attached lines.** Default `delete` matches pedal-party. Is `detach` (leave the line with a free end) ever wanted?
-
-## 10. Suggested build order
-
-1. Port the pure utils and their specs into `core` (largest and safest chunk).
-2. Scene state store in `core`, then `Scene` with pan/zoom, then `Dot` with drag and measurement.
-3. `ElbowLine` rendering (segments, tips), then tip and segment dragging.
-4. Connect mode (`mode`, `onConnect`).
-5. `useDotsAndLines`.
-6. Migrate pedal-party onto it in a branch to validate the API.
+1. `core`: scene state store, view maths, built-in bindings, elbow helpers (with ported specs).
+2. `react`: `Scene` (pan/zoom, connect mode), `Dot`, `ElbowLine`, and the hooks.
+3. Playground demo page.
+4. Later: controlled line ends, reading and restoring a line's route, tips (`tipStart` / `tipEnd`), anchors, a document hook. Each needs its own design.

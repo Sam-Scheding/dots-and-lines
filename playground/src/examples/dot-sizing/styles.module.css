@@ -1,0 +1,14 @@
+.card {
+  padding: 10px 12px;
+  max-width: 190px;
+  background: #fff;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: grab;
+  user-select: none;
+}
+
+.card p {
+  margin: 6px 0 0;
+}
