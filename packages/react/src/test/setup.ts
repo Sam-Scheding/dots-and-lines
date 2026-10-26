@@ -19,3 +19,13 @@ if (typeof globalThis.PointerEvent === 'undefined') {
   globalThis.PointerEvent =
     PointerEventPolyfill as unknown as typeof PointerEvent;
 }
+
+// jsdom has no ResizeObserver, and never lays anything out, so a stub that
+// never fires is all the tests need. Dots fall back to their initial measure.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class ResizeObserverStub {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

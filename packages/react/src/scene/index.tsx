@@ -1,5 +1,7 @@
 import {
+  MAGNET_DISTANCE,
   resolveInput,
+  snapPointToRects,
   type Point,
   type SceneState,
   type ViewAction,
@@ -8,11 +10,14 @@ import {
   useEffect,
   useMemo,
   useRef,
+  useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 
+import { createDotRegistry } from '../dot-registry';
+import { magneticTargets } from '../resolve-bound-route';
 import { SceneContext } from '../scene-context';
 import { useLatest } from '../use-latest';
 import { useScene } from '../hooks';
@@ -78,7 +83,8 @@ export function Scene({
   } | null>(null);
   const connectStartRef = useRef<Point | null>(null);
 
-  const context = useMemo(() => ({ state }), [state]);
+  const [registry] = useState(createDotRegistry);
+  const context = useMemo(() => ({ state, registry }), [state, registry]);
 
   // A half-finished connection never survives a mode change.
   useEffect(() => {
@@ -159,7 +165,15 @@ export function Scene({
   };
 
   const handleConnectClick = (clientX: number, clientY: number) => {
-    const point = clientToWorld(clientX, clientY);
+    // Clicks snap to magnetic Dots like a dragged line end does. The line
+    // that `onConnect` creates then attaches itself on mount.
+    const clicked = clientToWorld(clientX, clientY);
+    const snap = snapPointToRects(
+      clicked,
+      magneticTargets(registry.getSnapshot()),
+      { distance: MAGNET_DISTANCE / state.getView().zoom },
+    );
+    const point = snap ? snap.point : clicked;
     const start = connectStartRef.current;
 
     if (!start) {

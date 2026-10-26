@@ -4,6 +4,7 @@ import { renderToString } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 
 import { Dot } from '../dot';
+import { measureDots } from '../test/measure-dots';
 import { Scene } from './index';
 
 function setup(
@@ -242,6 +243,83 @@ describe('Scene', () => {
       fireEvent.pointerMove(window, { clientX: 50, clientY: 50, pointerId: 1 });
       fireEvent.pointerUp(window, { pointerId: 1 });
       expect(onMove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('connect mode next to Dots', () => {
+    measureDots(80, 40);
+
+    // A Dot at (100, 100): edges at x = 100 / 180 and y = 100 / 140.
+    function setupWithDots(
+      isMagnetic = true,
+      view?: { panX: number; panY: number; zoom: number },
+    ) {
+      const onConnect = vi.fn();
+      const state = createSceneState({ defaultView: view });
+      const utils = render(
+        <Scene state={state} onConnect={onConnect}>
+          <Dot x={100} y={100} isMagnetic={isMagnetic}>
+            <div />
+          </Dot>
+        </Scene>,
+      );
+      act(() => state.setMode('connect'));
+      const root =
+        utils.container.querySelector<HTMLElement>('[data-dl-scene]')!;
+      return { state, root, onConnect };
+    }
+
+    it('snaps each click to the nearest point on a Dot border within 16px', () => {
+      const { root, onConnect } = setupWithDots();
+      press(root, 190, 110); // 10px right of the right edge
+      press(root, 130, 90); // 10px above the top edge
+      expect(onConnect).toHaveBeenCalledWith({
+        start: { x: 180, y: 110 },
+        end: { x: 130, y: 100 },
+      });
+    });
+
+    it('leaves clicks that are out of reach alone', () => {
+      const { root, onConnect } = setupWithDots();
+      press(root, 200, 110); // 20px away
+      press(root, 300, 300);
+      expect(onConnect).toHaveBeenCalledWith({
+        start: { x: 200, y: 110 },
+        end: { x: 300, y: 300 },
+      });
+    });
+
+    it('ignores Dots that are not magnetic', () => {
+      const { root, onConnect } = setupWithDots(false);
+      press(root, 190, 110);
+      press(root, 300, 300);
+      expect(onConnect).toHaveBeenCalledWith({
+        start: { x: 190, y: 110 },
+        end: { x: 300, y: 300 },
+      });
+    });
+
+    it('measures the snap distance in screen px, whatever the zoom', () => {
+      // At 2x: 16 screen px is 8 world px. World (190, 110) is 10 away.
+      const { root, onConnect } = setupWithDots(true, {
+        panX: 0,
+        panY: 0,
+        zoom: 2,
+      });
+      press(root, 380, 220); // world (190, 110): out of reach
+      press(root, 372, 220); // world (186, 110): 6 away, snaps
+      expect(onConnect).toHaveBeenCalledWith({
+        start: { x: 190, y: 110 },
+        end: { x: 180, y: 110 },
+      });
+    });
+
+    it('treats two clicks that snap to the same point as one point', () => {
+      const { root, onConnect, state } = setupWithDots();
+      press(root, 190, 110);
+      press(root, 186, 110); // snaps to the same spot
+      expect(onConnect).not.toHaveBeenCalled();
+      expect(state.getMode()).toBe('connect');
     });
   });
 });

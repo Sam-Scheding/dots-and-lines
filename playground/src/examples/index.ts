@@ -9,6 +9,9 @@ import { DotSnapToGridExample } from './dot-snap-to-grid';
 import { ElbowLineExample } from './elbow-line';
 import { ElbowLineJsxExample } from './elbow-line-jsx';
 import { ElbowLineOverlayExample } from './elbow-line-overlay';
+import { ElbowLineRoundedExample } from './elbow-line-rounded';
+import { MagneticDotsExample } from './magnetic-dots';
+import { MagneticOffExample } from './magnetic-off';
 import { PanZoomDisabledExample } from './pan-zoom-disabled';
 import { PersistViewExample } from './persist-view';
 import { ToolbarExample } from './toolbar';
@@ -78,10 +81,31 @@ export const examples: Example[] = [
     Component: ElbowLineExample,
   },
   {
+    id: 'magnetic-dots',
+    title: 'Magnetic Dots',
+    description:
+      'A line attached to two Dots follows them; drag an end next to a Dot to snap, away to let go.',
+    Component: MagneticDotsExample,
+  },
+  {
+    id: 'magnetic-off',
+    title: 'Magnetic off',
+    description:
+      'isMagnetic={false} on the Dots: a line ignores them. Toggle it to compare.',
+    Component: MagneticOffExample,
+  },
+  {
     id: 'elbow-line-overlay',
     title: 'Elbow line overlay',
     description: 'A toolbar that appears on the selected line.',
     Component: ElbowLineOverlayExample,
+  },
+  {
+    id: 'elbow-line-rounded',
+    title: 'Elbow line, rounded',
+    description:
+      'A border-radius in the line’s className rounds its corners, up to half its thickness.',
+    Component: ElbowLineRoundedExample,
   },
   {
     id: 'use-selected',

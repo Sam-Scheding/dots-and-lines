@@ -1,0 +1,31 @@
+.note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* The class is applied to every segment, so a segment is a box you can round. */
+.line {
+  --dl-line-size: 12px;
+  background: #e11d48;
+}
+
+/* A box can't be rounder than half its thickness, so this is the roundest a
+   corner gets. It rounds the ends of every segment, so the line's own two
+   ends are round too. */
+.rounded {
+  border-radius: calc(var(--dl-line-size) / 2);
+}
+
+/* Handles keep a constant on-screen size: --dl-zoom is set by the Scene. */
+.handle {
+  display: block;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 2px solid #3b82f6;
+  border-radius: 50%;
+  cursor: move;
+  transform: scale(calc(1 / var(--dl-zoom, 1)));
+}

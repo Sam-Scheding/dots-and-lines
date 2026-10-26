@@ -1,6 +1,6 @@
 // @dots-and-lines/core: framework-agnostic, DOM-free.
 
-export type { Point, View, Mode, ZoomLimits } from './types';
+export type { Point, View, Mode, ZoomLimits, Rect, Edge } from './types';
 
 export { createSceneState } from './create-scene-state';
 export type { SceneState, CreateSceneStateOptions } from './create-scene-state';
@@ -16,3 +16,11 @@ export { moveElbowSegment } from './move-elbow-segment';
 export { moveElbowEnd } from './move-elbow-end';
 export { lineSegments } from './line-segments';
 export type { ElbowSegment } from './line-segments';
+// Magnetic connections between line ends and Dot edges.
+export {
+  snapPointToRects,
+  MAGNET_DISTANCE,
+  MAGNET_RELEASE,
+} from './snap-point-to-rects';
+export type { SnapTarget, RectSnap, SnapOptions } from './snap-point-to-rects';
+export { pointOnRectEdge } from './point-on-rect-edge';

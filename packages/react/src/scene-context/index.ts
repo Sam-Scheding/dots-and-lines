@@ -1,7 +1,13 @@
 import type { SceneState } from '@dots-and-lines/core';
 import { createContext, useContext } from 'react';
 
-type SceneContextValue = { state: SceneState };
+import type { DotRegistry } from '../dot-registry';
+
+type SceneContextValue = {
+  state: SceneState;
+  /** Where each Dot is; lines snap to and follow these. */
+  registry: DotRegistry;
+};
 
 export const SceneContext = createContext<SceneContextValue | null>(null);
 

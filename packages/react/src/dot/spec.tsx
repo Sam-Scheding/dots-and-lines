@@ -1,8 +1,10 @@
 import { createSceneState } from '@dots-and-lines/core';
 import { act, fireEvent, render } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { useSceneContext } from '../scene-context';
 import { Scene } from '../scene';
+import { measureDots } from '../test/measure-dots';
 import { Dot } from './index';
 
 function setup(props: Partial<Parameters<typeof Dot>[0]> = {}, zoom = 1) {
@@ -239,5 +241,138 @@ describe('Dot', () => {
     release();
     expect(onMove).not.toHaveBeenCalled();
     expect(onMoveEnd).not.toHaveBeenCalled();
+  });
+
+  describe('reporting to the Scene', () => {
+    measureDots(80, 40);
+
+    function Probe({
+      onSnapshot,
+    }: {
+      onSnapshot: (s: ReadonlyMap<string, unknown>) => void;
+    }) {
+      const { registry } = useSceneContext('Probe');
+      onSnapshot(registry.getSnapshot());
+      return null;
+    }
+
+    function registered(props: Partial<Parameters<typeof Dot>[0]> = {}) {
+      const state = createSceneState();
+      const seen: { current: ReadonlyMap<string, unknown> } = {
+        current: new Map(),
+      };
+      let registry!: ReturnType<typeof useSceneContext>['registry'];
+      function Grab() {
+        registry = useSceneContext('Grab').registry;
+        return null;
+      }
+      const tree = (
+        dot: boolean,
+        extra: Partial<Parameters<typeof Dot>[0]> = {},
+      ) => (
+        <Scene state={state}>
+          <Grab />
+          <Probe onSnapshot={(s) => (seen.current = s)} />
+          {dot ? (
+            <Dot x={10} y={20} {...props} {...extra}>
+              <div />
+            </Dot>
+          ) : null}
+        </Scene>
+      );
+      const utils = render(tree(true));
+      return {
+        ...utils,
+        tree,
+        entries: () => [...registry.getSnapshot().values()],
+      };
+    }
+
+    it('registers its box and magnetism on mount', () => {
+      const { entries } = registered();
+      expect(entries()).toEqual([
+        { rect: { x: 10, y: 20, width: 80, height: 40 }, isMagnetic: true },
+      ]);
+    });
+
+    it('is magnetic by default and reports isMagnetic={false}', () => {
+      expect(registered({ isMagnetic: false }).entries()[0]).toMatchObject({
+        isMagnetic: false,
+      });
+    });
+
+    it('updates when it moves or isMagnetic changes', () => {
+      const { entries, rerender, tree } = registered();
+      rerender(tree(true, { x: 50, y: 60, isMagnetic: false }));
+      expect(entries()).toEqual([
+        { rect: { x: 50, y: 60, width: 80, height: 40 }, isMagnetic: false },
+      ]);
+    });
+
+    it('unregisters on unmount', () => {
+      const { entries, rerender, tree } = registered();
+      rerender(tree(false));
+      expect(entries()).toEqual([]);
+    });
+
+    it('measures its body, not its overlay, and ignores the Scene zoom', () => {
+      const state = createSceneState({
+        defaultView: { panX: 0, panY: 0, zoom: 3 },
+      });
+      let registry!: ReturnType<typeof useSceneContext>['registry'];
+      function Grab() {
+        registry = useSceneContext('Grab').registry;
+        return null;
+      }
+      const { container } = render(
+        <Scene state={state}>
+          <Grab />
+          <Dot x={0} y={0} overlay={<div>big toolbar</div>}>
+            <div />
+          </Dot>
+        </Scene>,
+      );
+      const dot = container.querySelector('[data-dl-dot]')!;
+      act(() => (dot as HTMLElement).focus());
+      expect([...registry.getSnapshot().values()][0].rect).toMatchObject({
+        width: 80,
+        height: 40,
+      });
+    });
+
+    describe('when its size changes', () => {
+      afterEach(() => {
+        vi.unstubAllGlobals();
+      });
+
+      it('re-registers with the new size', () => {
+        let notify = () => {};
+        let observed: Element | null = null;
+        vi.stubGlobal(
+          'ResizeObserver',
+          class {
+            constructor(callback: () => void) {
+              notify = callback;
+            }
+            observe(el: Element) {
+              observed = el;
+            }
+            unobserve() {}
+            disconnect() {}
+          },
+        );
+        const { entries, container } = registered();
+        expect(observed).toBe(container.querySelector('[data-dl-dot-body]'));
+
+        Object.defineProperty(observed!, 'offsetWidth', {
+          configurable: true,
+          value: 120,
+        });
+        act(() => notify());
+        expect(entries()[0]).toMatchObject({
+          rect: { x: 10, y: 20, width: 120, height: 40 },
+        });
+      });
+    });
   });
 });

@@ -1,22 +1,33 @@
 import {
+  MAGNET_DISTANCE,
+  MAGNET_RELEASE,
   lineSegments,
   moveElbowEnd,
   moveElbowSegment,
   seedElbowPoints,
+  snapPointToRects,
   type ElbowSegment,
   type Point,
 } from '@dots-and-lines/core';
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
 
 import { useSceneContext } from '../scene-context';
+import {
+  NO_BINDINGS,
+  magneticTargets,
+  resolveBoundRoute,
+  type Bindings,
+} from '../resolve-bound-route';
 import { startDrag } from '../start-drag';
 import { SelectedContext } from '../selected-context';
 import { useFocusWithin } from '../use-focus-within';
@@ -35,6 +46,13 @@ export type ElbowLineProps = {
   className?: string;
   /** Select the line as soon as it mounts, e.g. one just made by `onConnect`. */
   autoFocus?: boolean;
+  /**
+   * Whether an end dragged near a Dot snaps to its edge and then follows the
+   * Dot. Default `true`. Also decides whether `initialStart` / `initialEnd`
+   * attach to a Dot they sit on. A Dot can opt out with its own
+   * `isMagnetic={false}`.
+   */
+  isMagnetic?: boolean;
   /**
    * Rendered at every segment midpoint and every end while the line is
    * selected (focus is inside it).
@@ -159,17 +177,75 @@ export function ElbowLine({
   handle,
   overlay,
   autoFocus = false,
+  isMagnetic = true,
 }: ElbowLineProps) {
-  const { state } = useSceneContext('ElbowLine');
+  const { state, registry } = useSceneContext('ElbowLine');
   // The library owns the route. It starts as an L between the two initial
   // points and is edited in place by the handles.
   const [points, setPoints] = useState(() =>
     seedElbowPoints(initialStart, initialEnd),
   );
+  // Which Dot edge each end is attached to, if any. A bound end is not stored
+  // in `points`: it is looked up from the Dot every render, so it follows the
+  // Dot with no lag and `points` stays the route the user last shaped.
+  const [bindings, setBindings] = useState<Bindings>(NO_BINDINGS);
+  const dots = useSyncExternalStore(
+    registry.subscribe,
+    registry.getSnapshot,
+    registry.getSnapshot,
+  );
+  const { route: resolved, released } = useMemo(
+    () => resolveBoundRoute(points, bindings, dots, isMagnetic),
+    [points, bindings, dots, isMagnetic],
+  );
+  const hasReleased = released.start || released.end;
+
   const { focused: selected, onFocus, onBlur } = useFocusWithin();
   const rootRef = useRef<HTMLDivElement>(null);
-  const latest = useLatest({ points });
+  // The last route drawn with every bound end on a live Dot.
+  const lastGoodRef = useRef(points);
+  const route = hasReleased ? lastGoodRef.current : resolved;
+  const latest = useLatest({ route, bindings, isMagnetic });
   const cancelDragRef = useRef<(() => void) | null>(null);
+
+  // A bound end whose Dot unmounted (or stopped being magnetic) stays where
+  // it last was, as an ordinary free end.
+  useLayoutEffect(() => {
+    if (!hasReleased) {
+      lastGoodRef.current = resolved;
+      return;
+    }
+    setPoints(lastGoodRef.current);
+    setBindings((current) => ({
+      start: released.start ? null : current.start,
+      end: released.end ? null : current.end,
+    }));
+  }, [hasReleased, resolved, released.start, released.end]);
+
+  // Ends that start on a Dot's edge attach to it. Passive, so that every Dot
+  // (before or after this line in the tree) has already reported its box.
+  useEffect(() => {
+    if (!isMagnetic) return;
+    const targets = magneticTargets(registry.getSnapshot());
+    if (targets.length === 0) return;
+
+    const options = { distance: MAGNET_DISTANCE / state.getView().zoom };
+    let next = points;
+    const attached: Bindings = { start: null, end: null };
+    for (const end of ['start', 'end'] as const) {
+      const at = end === 'start' ? next[0] : next[next.length - 1];
+      const snap = at && snapPointToRects(at, targets, options);
+      if (!snap) continue;
+      next = moveElbowEnd(next, end, snap.point);
+      attached[end] = { dotKey: snap.key, edge: snap.edge, t: snap.t };
+    }
+    if (attached.start || attached.end) {
+      setPoints(next);
+      setBindings(attached);
+    }
+    // Once, on mount: the initial points are only read then.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => () => cancelDragRef.current?.(), []);
 
@@ -179,30 +255,57 @@ export function ElbowLine({
     if (autoFocus) rootRef.current?.focus({ preventScroll: true });
   }, [autoFocus]);
 
-  const segments = useMemo(() => lineSegments(points), [points]);
+  const segments = useMemo(() => lineSegments(route), [route]);
 
   const beginDrag = (
     event: ReactPointerEvent<HTMLDivElement>,
-    edit: (base: Point[], dx: number, dy: number) => Point[],
+    onDrag: (base: Point[], dx: number, dy: number) => void,
   ) => {
     if (event.button !== 0 || !event.isPrimary || cancelDragRef.current) return;
 
     // Edits are measured from the route as it was at pointer-down, so the
     // handle stays under the pointer however the segments reshape.
-    const base = latest.current.points;
+    const base = latest.current.route;
     cancelDragRef.current = startDrag({
       event: event.nativeEvent,
       getZoom: () => state.getView().zoom,
       threshold: 0,
-      onDrag: (dx, dy) => setPoints(edit(base, dx, dy)),
+      onDrag: (dx, dy) => onDrag(base, dx, dy),
       onEnd: () => {
         cancelDragRef.current = null;
       },
     });
   };
 
-  const first = points[0];
-  const last = points[points.length - 1];
+  const dragEnd = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    end: 'start' | 'end',
+  ) => {
+    // The Dot this end is attached to at pointer-down: it holds on a little
+    // longer than a Dot the end has yet to reach.
+    let attachedKey = latest.current.bindings[end]?.dotKey;
+    beginDrag(event, (base, dx, dy) => {
+      const origin = end === 'start' ? base[0] : base[base.length - 1];
+      const raw = { x: origin.x + dx, y: origin.y + dy };
+      const zoom = state.getView().zoom;
+      const snap = latest.current.isMagnetic
+        ? snapPointToRects(raw, magneticTargets(registry.getSnapshot()), {
+            distance: MAGNET_DISTANCE / zoom,
+            release: MAGNET_RELEASE / zoom,
+            currentKey: attachedKey,
+          })
+        : null;
+      attachedKey = snap?.key;
+      setPoints(moveElbowEnd(base, end, snap ? snap.point : raw));
+      setBindings((current) => ({
+        ...current,
+        [end]: snap ? { dotKey: snap.key, edge: snap.edge, t: snap.t } : null,
+      }));
+    });
+  };
+
+  const first = route[0];
+  const last = route[route.length - 1];
 
   return (
     <div
@@ -240,7 +343,7 @@ export function ElbowLine({
                 style={handleStyle(segment.midpoint)}
                 onPointerDown={(event) =>
                   beginDrag(event, (base, dx, dy) =>
-                    moveElbowSegment(base, segment.index, dx, dy),
+                    setPoints(moveElbowSegment(base, segment.index, dx, dy)),
                   )
                 }
               >
@@ -254,16 +357,7 @@ export function ElbowLine({
                   key={`handle-${end}`}
                   data-dl-line-handle={end}
                   style={handleStyle(point)}
-                  onPointerDown={(event) =>
-                    beginDrag(event, (base, dx, dy) => {
-                      const origin =
-                        end === 'start' ? base[0] : base[base.length - 1];
-                      return moveElbowEnd(base, end, {
-                        x: origin.x + dx,
-                        y: origin.y + dy,
-                      });
-                    })
-                  }
+                  onPointerDown={(event) => dragEnd(event, end)}
                 >
                   {handle}
                 </div>

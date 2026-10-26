@@ -6,6 +6,37 @@ import type { Point } from '../types';
  * Move one end of the line to `to`, keeping the end segment orthogonal by
  * sliding the neighbouring point along with it.
  */
+/**
+ * With only two points there is no inner point to slide, and sliding the
+ * other end instead would drag it along. Route a Z so only `end` moves, with
+ * both end segments keeping the orientation the line had.
+ */
+function rerouteTwoPoints(
+  a: Point,
+  b: Point,
+  end: 'start' | 'end',
+  to: Point,
+): Point[] {
+  const orientation = elbowSegmentOrientation(a, b);
+  const from = end === 'start' ? to : a;
+  const target = end === 'start' ? b : to;
+  const route =
+    orientation === 'h'
+      ? [
+          from,
+          { x: (from.x + target.x) / 2, y: from.y },
+          { x: (from.x + target.x) / 2, y: target.y },
+          target,
+        ]
+      : [
+          from,
+          { x: from.x, y: (from.y + target.y) / 2 },
+          { x: target.x, y: (from.y + target.y) / 2 },
+          target,
+        ];
+  return normalizeElbowPoints(route.map((point) => ({ ...point })));
+}
+
 export function moveElbowEnd(
   points: readonly Point[],
   end: 'start' | 'end',
@@ -14,6 +45,10 @@ export function moveElbowEnd(
   const next = points.map((point) => ({ ...point }));
   if (next.length < 2) {
     return next;
+  }
+
+  if (next.length === 2) {
+    return rerouteTwoPoints(next[0], next[1], end, to);
   }
 
   if (end === 'start') {

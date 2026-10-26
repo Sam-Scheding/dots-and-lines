@@ -4,6 +4,11 @@ export type Point = { x: number; y: number };
 /** Pan is in screen px; zoom is unitless (1 = 100%). */
 export type View = { panX: number; panY: number; zoom: number };
 
+/** A box in world space: top-left corner plus size, in CSS px at zoom 1. */
+export type Rect = { x: number; y: number; width: number; height: number };
+
+export type Edge = 'left' | 'right' | 'top' | 'bottom';
+
 export type ZoomLimits = { min: number; max: number };
 
 export type Mode =

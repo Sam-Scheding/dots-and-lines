@@ -1,5 +1,7 @@
 import {
   useEffect,
+  useId,
+  useLayoutEffect,
   useRef,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
@@ -36,6 +38,11 @@ export type DotProps = {
   selectable?: boolean;
   /** Select the Dot as soon as it mounts, e.g. one created by an "Add" button. */
   autoFocus?: boolean;
+  /**
+   * Whether line ends snap to this Dot's edge and then follow it. Default
+   * `true`. A line can opt out too, with its own `isMagnetic={false}`.
+   */
+  isMagnetic?: boolean;
   /** The visuals. The Dot is exactly as large as its children. */
   children: ReactNode;
 };
@@ -43,7 +50,9 @@ export type DotProps = {
 /** Movement (screen px) before a press becomes a drag, so clicks still work. */
 const DRAG_THRESHOLD = 3;
 
-const BODY_STYLE: CSSProperties = { display: 'contents' };
+// A real box (unlike `display: contents`) so its size is the children's size,
+// whatever the overlay is doing. That box is what lines snap to.
+const BODY_STYLE: CSSProperties = { display: 'block', width: 'max-content' };
 
 export function Dot({
   x,
@@ -53,13 +62,53 @@ export function Dot({
   overlay,
   selectable = true,
   autoFocus = false,
+  isMagnetic = true,
   children,
 }: DotProps) {
-  const { state } = useSceneContext('Dot');
+  const { state, registry } = useSceneContext('Dot');
+  const key = useId();
   const { focused, onFocus, onBlur } = useFocusWithin();
   const latest = useLatest({ x, y, onMove, onMoveEnd });
   const dotRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const cancelDragRef = useRef<(() => void) | null>(null);
+  const placementRef = useRef({ x, y, isMagnetic });
+
+  // Tell the Scene where this Dot is, so lines can snap to it and follow it.
+  // Layout effects, so a line re-renders in the same frame the Dot moves.
+  const report = () => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const { x: px, y: py, isMagnetic: magnetic } = placementRef.current;
+    registry.set(key, {
+      // offset*, unlike getBoundingClientRect, ignores the Scene's zoom.
+      rect: {
+        x: px,
+        y: py,
+        width: body.offsetWidth,
+        height: body.offsetHeight,
+      },
+      isMagnetic: magnetic,
+    });
+  };
+  useLayoutEffect(() => {
+    placementRef.current = { x, y, isMagnetic };
+    report();
+  });
+  useLayoutEffect(() => {
+    const body = bodyRef.current;
+    const observer =
+      body && typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => report())
+        : null;
+    if (body) observer?.observe(body);
+    return () => {
+      observer?.disconnect();
+      registry.remove(key);
+    };
+    // `report` only reads refs and these two.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registry, key]);
 
   useEffect(() => () => cancelDragRef.current?.(), []);
 
@@ -117,6 +166,7 @@ export function Dot({
     >
       <SelectedContext value={focused}>
         <div
+          ref={bodyRef}
           data-dl-dot-body=""
           style={BODY_STYLE}
           onPointerDown={handlePointerDown}

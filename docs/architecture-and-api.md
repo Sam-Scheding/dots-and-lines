@@ -15,7 +15,7 @@ Three things, plus a state handle:
 - **`ElbowLine`**: an orthogonal path made of HTML segment elements. The consumer gives it two initial points; it starts as an L (or a straight line) and the **library owns its route** from then on. It can be selected (it takes focus), and then its segments and ends can be dragged.
 - **`SceneState`**: a stable handle (from `useSceneState()`) that holds the camera and the mode. Passed to `Scene`, readable from anywhere.
 
-Lines are **free-floating**. An `ElbowLine` is not connected to any Dot, and moving a Dot does not move a line. Its initial points are read once, when it mounts; changing them later does nothing (change the component's `key` to start over). Consumers cannot read, save or restore an edited route in v1.
+A line's ends can be **magnetic**: drag one next to a Dot and it snaps to the Dot's border and follows the Dot from then on, until it is dragged away (section 7). That is on by default and `isMagnetic={false}` turns it off. Otherwise a line's initial points are read once, when it mounts; changing them later does nothing (change the component's `key` to start over). Consumers cannot read, save or restore an edited route, or which Dot an end is attached to, in v1.
 
 | #   | Decision                                                                                                                                                                                                                                                                                                   |
 | --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -29,16 +29,16 @@ Lines are **free-floating**. An `ElbowLine` is not connected to any Dot, and mov
 | 8   | Line editing (drag segments and ends) and connect mode (click, click to create a line) are in v1.                                                                                                                                                                                                          |
 | 9   | **Selection is native focus.** `Scene`, `Dot` and `ElbowLine` are focusable (`tabindex="-1"`); an element is selected while focus is inside it. A selected Dot draws a ring (`selectable={false}` turns it off); `useSelected()` reads it in JS. There is no selection state in `SceneState`, and no `id`. |
 | 10  | Reading state in React is one selector hook, `useScene(sceneState, select)`.                                                                                                                                                                                                                               |
+| 11  | **Line ends are magnetic by default.** An end dragged within 16 screen px of a Dot's border snaps and follows that Dot; `isMagnetic={false}` on the `Dot` or the `ElbowLine` opts out. The attachment is internal: no ids, no callbacks, not saved.                                                        |
 
 ## 2. Not built in v1
 
 These are deliberately left out, **along with any supporting code**. Do not add them "just in case"; each one has a cost and a later version may design it differently.
 
-- **Anchors / bindings between lines and Dots** (`DotAnchor`, anchored line ends, edge and `t`), and everything that existed to support them:
-  - measuring Dot size with a `ResizeObserver`, and the Dot rectangle registry
-  - snapping line ends to Dot edges
-  - resolving anchored ends at render time, and `syncLinesToDots`
-  - any policy for what happens to a line when its Dot is removed
+- **Reading or controlling attachments.** Line ends attach to Dots internally (section 7), but there is no `DotAnchor`, no `id` on a Dot, no `onAttach` / `onDetach`, and no way to read, save or restore which Dot an end is attached to. Also left out:
+  - a `syncLinesToDots` that a consumer calls, and a removal policy that deletes lines (a line whose Dot is removed just keeps a free end)
+  - forcing an attached end's segment to leave the Dot perpendicular
+  - a highlight (for example a `data-dl-magnet` attribute) on a Dot while a line end is snapping to it
 - **Line tips**, and their orientation. A later version may add `tipStart` / `tipEnd` props that let a consumer render a node at each end of a line. That would let `pedal-party` draw plugs without `dots-and-lines` knowing what a plug is.
 - **Dot `width` / `height` props and rotation.** A Dot is as big as its children.
 - **Selection state in `SceneState`**, `id`s, and selecting from outside the Scene. Selection is the browser's focus, so it is lost when focus moves to a control outside the Scene, and there is no `getSelection` or `onSelect`. Controls that act on the selection belong in an `overlay`.
@@ -48,7 +48,7 @@ These are deliberately left out, **along with any supporting code**. Do not add 
 - **Customisable input bindings** (`inputBindings`, the `InputBinding` types). v1 has one built-in set, switched on or off with `panZoom`.
 - **`ElbowLine` props** `startTip`, `endTip`, `cornerRadius`, `classNames`.
 - **Reading or restoring a line's edited route**: no `points` prop and no `onChange`. Together with the next item, this is what keeps a line's geometry valid by construction.
-- **Controlled line ends** (`start` / `end` props that move a line when they change, so it can follow a Dot), and route options such as `axis` and `bend`. They can be added later without changing `initialStart` / `initialEnd`.
+- **Controlled line ends** (`start` / `end` props that move a line when they change), and route options such as `axis` and `bend`. They can be added later without changing `initialStart` / `initialEnd`.
 - **Keyboard accessibility.**
 
 ## 3. Why a `Scene` is required
@@ -85,6 +85,7 @@ Before the first publish, register the `@dots-and-lines` npm org. `npm view` ret
 | **World**      | The inner element of a Scene that carries the pan and zoom transform. Everything the consumer passes as `children` is drawn inside it. |
 | **Dot**        | A draggable wrapper around the consumer's visuals. It has a position and is exactly as large as its children.                          |
 | **ElbowLine**  | An orthogonal path drawn as HTML segment elements. Starts as an L between two initial points; the library owns its route afterwards.   |
+| **Magnetic**   | A Dot or line that takes part in snapping. A line end attaches to a magnetic Dot's border and follows it until dragged away.           |
 | **Handle**     | A consumer-rendered node (`handle` prop) placed at each segment midpoint and each end of a selected line, for dragging.                |
 | **View**       | `{ panX, panY, zoom }`. Pan is in screen px, zoom is unitless.                                                                         |
 | **Mode**       | `'select'` (drag and edit) or `'connect'` (click twice to create a line).                                                              |
@@ -95,11 +96,12 @@ Two kinds of state, with different owners:
 
 - **Dot positions** belong to the **consumer**. `Dot` takes `x` / `y` and calls `onMove`. The library never stores them, so the consumer's own state, store, or URL sync is the single source of truth.
 - **A line's route** belongs to the **`ElbowLine`**. The consumer supplies `initialStart` / `initialEnd` (typically from `onConnect`) and the line owns the route from then on. This is what makes invalid paths unrepresentable: consumers never hand it a list of points. The cost is that the consumer cannot read or save an edited route in v1.
+- **Where each Dot is** is reported by the `Dot` itself to its `Scene`. Each Dot registers its box (its `x` / `y` plus its measured size, from a `ResizeObserver`) and whether it is magnetic in an internal registry in the Scene's context. Lines read it; the consumer never does. Which Dot an end is attached to (an edge and a position along it) belongs to the **`ElbowLine`**, next to its route.
 - **Camera and mode** belong to a **`SceneState` handle**. `useSceneState({ defaultView, zoom })` returns an object that never changes identity: `getView`, `setView`, `getMode`, `setMode`, `panBy`, `zoomBy`, `subscribe`. The consumer passes it to `<Scene state={sceneState}>` and can hand it to anything else (a toolbar, an "Add lead" button, URL sync) with no provider.
 
 Reading from the handle does not re-render anything. Components that need to react use `useScene(sceneState, select)`, for example `useScene(sceneState, (s) => s.getView().zoom)`, and re-render only when the picked value changes. Because the handle is stable, calling `useSceneState()` in a top-level component does not re-render that component on pan or zoom. The store itself is plain code in `core`, so other frameworks can reuse it.
 
-`Scene` also provides an internal context that `Dot` and `ElbowLine` read: the same handle and `clientToWorld(clientX, clientY)`. Consumers never touch the context.
+`Scene` also provides an internal context that `Dot` and `ElbowLine` read: the same handle and the Dot registry. Consumers never touch the context.
 
 **Selection** is not library state: it is the browser's focus. A Dot or line is selected while focus is inside it, so the library only has to make its elements focusable and tell its own overlay and handles whether focus is inside (`onFocus` / `onBlur`, which bubble in React). The consumer styles it with `:focus-within`, and reads it in JS with `useSelected()` from inside the element. The cost is that selection follows focus: clicking a control outside the Scene deselects, so controls that act on a selection live in an `overlay`.
 
@@ -128,11 +130,13 @@ The Scene root is itself focusable (`tabindex="-1"`, `outline: none`), so a pres
 
 Built-in pan and zoom (on by default, `panZoom={false}` turns it off) uses `pedal-party`'s bindings: ctrl/cmd + wheel zooms about the cursor, shift + wheel pans horizontally, plain wheel pans, and space + drag pans. Because plain wheel pans, a Scene captures wheel events, so it will not let the page scroll while the pointer is over it.
 
-**Connect mode.** While `mode === 'connect'`, a pointer-down inside the Scene does not start a Dot drag. The first click is the start, the second is the end; the Scene calls `onConnect({ start, end })` and returns to `'select'`. The consumer stores those two points and renders an `ElbowLine` with them as `initialStart` / `initialEnd`.
+**Connect mode.** While `mode === 'connect'`, a pointer-down inside the Scene does not start a Dot drag. The first click is the start, the second is the end; the Scene calls `onConnect({ start, end })` and returns to `'select'`. The consumer stores those two points and renders an `ElbowLine` with them as `initialStart` / `initialEnd`. Each click first snaps to the nearest magnetic Dot border within 16 screen px, so a line drawn from one Dot to another attaches to both when it mounts.
 
 ### `Dot`
 
 Renders an absolutely-positioned wrapper at `left: 0; top: 0`, moved with `transform: translate(x, y)` and sized `width: max-content`. Positioning with `transform` rather than `left` / `top` avoids a real layout problem: an absolutely-positioned element's available width shrinks as `left` grows, so content near the right edge would wrap. With `max-content` and a transform, a Dot never squeezes its children.
+
+The children sit in a body element (`data-dl-dot-body`, `display: block; width: max-content`) that is a real box, so a Dot's size is its children's size and an `overlay` never inflates it. A layout effect reports that box, with the Dot's `x` / `y`, to the Scene on every render, and a `ResizeObserver` reports size changes. It reads `offsetWidth` / `offsetHeight`, which ignore the Scene's zoom. Reporting in a layout effect means a line re-renders in the same frame the Dot moves. The Dot unregisters when it unmounts. `isMagnetic` (default `true`) is part of the report.
 
 Dragging is tracked with window-level pointer listeners (not pointer capture, which would swallow clicks on buttons inside a Dot), with pixel deltas divided by zoom. A press only becomes a drag after 3px of movement, and the click that follows a real drag is suppressed. Dragging starts only from the children, not from `overlay`, so buttons in an overlay keep working.
 
@@ -157,6 +161,16 @@ Starts as an L between `initialStart` and `initialEnd` (`seedElbowPoints`), or a
 Each segment also has an invisible, thicker hit element (owned by the library) that receives pointer events, so a thin line is still easy to click. It has no tabindex of its own, so pressing it focuses the line's root, which selects the line.
 
 While selected (focus is inside the root, which also contains the handles and the overlay), the line renders the `handle` node at every segment midpoint and every end, plus `overlay` at the line's anchor point. Dragging a midpoint handle moves that segment (`moveElbowSegment`), and dragging a segment at either end of the line sideways inserts a new one; dragging an end handle moves that end (`moveElbowEnd`). Edits are measured from the route at pointer-down, and the result stays in the line's own state. There is no change callback.
+
+**Magnetic ends.** A line's ends can attach to Dots (`isMagnetic`, default `true`, on the line and on each Dot):
+
+- _Snap._ While an end handle is dragged, the end point is tested against every magnetic Dot's box (`snapPointToRects`). Within 16 screen px (`16 / zoom` in world px) of a border it snaps to the nearest point on it, and the line remembers the attachment as `{ Dot, edge, t }`, with `t` the position along the edge from 0 to 1. A point inside a Dot snaps to the nearest edge.
+- _Follow._ An attached end is not stored in the route. Each render, the route is resolved from the stored route by moving the attached end to the Dot's current edge point (`moveElbowEnd`), so the line follows with no lag and the result depends only on where the Dot is now, not on where it has been. A drag or segment edit starts from the resolved route and commits it.
+- _Release._ An end held by a Dot lets go only beyond 24 screen px (`MAGNET_RELEASE`), so it does not flicker at the 16 px threshold. If the Dot unmounts, or the Dot or the line stops being magnetic, the end stays where it last was and is free.
+- _On mount._ In a passive effect, so that every Dot has already reported its box wherever it sits in the tree, each of `initialStart` and `initialEnd` within 16 screen px of a magnetic Dot attaches. The attached end snaps onto the border, so it can move by up to 16 px one frame after the first paint.
+- _Routing._ `moveElbowEnd` keeps the end segment's orientation and slides its neighbouring point. A two-point route has no inner point to slide, so it routes a Z (`A, (mid, A.y), (mid, to.y), to`) and the other end never moves. The end segment is not forced to leave the Dot perpendicular, so a line can run along or through a Dot's border.
+
+Known limits: the attachment is lost if the line remounts; an attached end's handle is centred on the border, so a Dot later in the tree can cover its inner half; and because bends are re-normalised, a bend the user made can merge away when the route collapses.
 
 ## 8. Usage
 
@@ -222,7 +236,7 @@ Dots draw in array order (there is no `zIndex` prop), so the consumer controls l
 | Difference                                                                  | Why                                                                               |
 | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
 | Coordinates are CSS px, not cm                                              | The library has no unit concept. CSS `cm` is a fixed 96/2.54 px                   |
-| Lines are not bound to pedals                                               | Anchors are not built in v1 (section 2)                                           |
+| Line ends attach to Dots by proximity, with no binding data                 | The attachment is internal (section 7), so there are no ids and nothing to save   |
 | A line's route is owned by `ElbowLine`, not passed in as `points`           | Invalid paths cannot be expressed; `initialStart` / `initialEnd` are all you give |
 | Dot size is not stored; a Dot is as large as its children                   | The library wraps arbitrary children                                              |
 | Lines are HTML segment elements, not an SVG layer                           | Consumers style them with one `className`, and corner rounding is `border-radius` |
@@ -231,16 +245,19 @@ Dots draw in array order (there is no `zIndex` prop), so the consumer controls l
 
 ### What this means for migrating pedal-party
 
-`pedal-party` cannot move onto v1 as-is, for two reasons:
+`pedal-party` still cannot move onto v1 as-is:
 
-- Its leads follow pedals and snap to their edges, but v1 lines are free-floating and take their endpoints only once.
+- Its leads snap to and follow pedals, which v1 now does, but the attachment is not exposed. `pedal-party` keeps `startBinding` / `endBinding` in each lead and saves them in share links; v1 gives the consumer no way to read or restore an attachment.
 - It saves each lead's points in share links, but v1 gives the consumer no way to read or restore an edited route.
+- Removing a pedal deletes the leads bound to it. In v1 a line whose Dot is removed keeps a free end, and the consumer decides whether to remove the line.
+- Its snap threshold (12 px converted to cm) is not divided by zoom; v1's is a constant 16 screen px.
 
-Closing those gaps is the next design step (section 10), and the likely shape is controlled `start` / `end` plus a way to read and restore a route, not built-in anchors.
+Closing those gaps is the next design step (section 10), and the likely shape is a way to read and restore a route together with its attachments.
 
 ## 10. Build order
 
 1. `core`: scene state store, view maths, built-in bindings, elbow helpers (with ported specs).
 2. `react`: `Scene` (pan/zoom, connect mode), `Dot`, `ElbowLine`, and the hooks.
 3. Playground demo page.
-4. Later: controlled line ends, reading and restoring a line's route, tips (`tipStart` / `tipEnd`), anchors, a document hook. Each needs its own design.
+4. Magnetic connections: the Dot registry, snapping, following, and releasing.
+5. Later: controlled line ends, reading and restoring a line's route and its attachments, tips (`tipStart` / `tipEnd`), a document hook. Each needs its own design.
