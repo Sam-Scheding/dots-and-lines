@@ -1,0 +1,29 @@
+.root {
+  position: relative;
+  box-sizing: border-box;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid #9ca3af;
+  background: #f3f4f6;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+
+.active {
+  cursor: grabbing;
+}
+
+.thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid #6b7280;
+  background: #9ca3af;
+  pointer-events: none;
+}

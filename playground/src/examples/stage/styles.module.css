@@ -1,5 +1,7 @@
 /* The Scene fills its parent, so the parent needs a size. */
 .stage {
+  /* So an absolutely-positioned control can sit in a corner. */
+  position: relative;
   height: 60vh;
   border: 1px solid #d1d5db;
   border-radius: 6px;

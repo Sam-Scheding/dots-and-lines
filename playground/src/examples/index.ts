@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react';
 
+import { CustomStylingExample } from './custom-styling';
 import { DotExample } from './dot';
 import { DotClickableContentExample } from './dot-clickable-content';
 import { DotOverlayExample } from './dot-overlay';
@@ -14,7 +15,7 @@ import { MagneticDotsExample } from './magnetic-dots';
 import { MagneticOffExample } from './magnetic-off';
 import { PanZoomDisabledExample } from './pan-zoom-disabled';
 import { PersistViewExample } from './persist-view';
-import { ToolbarExample } from './toolbar';
+import { PlaygroundExample } from './playground';
 import { UrlStateExample } from './url-state';
 import { UseSelectedExample } from './use-selected';
 import { ZoomControlsExample } from './zoom-controls';
@@ -109,6 +110,13 @@ export const examples: Example[] = [
     Component: ElbowLineRoundedExample,
   },
   {
+    id: 'custom-styling',
+    title: 'Custom styling',
+    description:
+      'Lines styled with a className (thick and rounded, dashed, glowing) between Dots whose content is a card, a panel and a pill.',
+    Component: CustomStylingExample,
+  },
+  {
     id: 'url-state',
     title: 'Board in the URL',
     description:
@@ -129,11 +137,11 @@ export const examples: Example[] = [
     Component: ZoomControlsExample,
   },
   {
-    id: 'toolbar',
-    title: 'Toolbar',
+    id: 'playground',
+    title: 'Playground',
     description:
-      'Pan and zoom from buttons or from the mouse / trackpad, in the same camera.',
-    Component: ToolbarExample,
+      'Everything together: add and delete Dots and lines, snap to a grid, magnetic Dots, and a pan joystick and zoom slider.',
+    Component: PlaygroundExample,
   },
   {
     id: 'pan-zoom-disabled',

@@ -1,0 +1,162 @@
+.note {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+/* The selection ring is drawn by the Dot; this is its colour. */
+.root {
+  --dl-select-color: #8b5cf6;
+}
+
+/* ---- Dots: only their content is styled ---- */
+
+.input {
+  box-sizing: border-box;
+  width: 160px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-left: 6px solid #10b981;
+  border-radius: 12px;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.08);
+  font-size: 13px;
+  cursor: grab;
+  user-select: none;
+}
+
+.inputText {
+  display: flex;
+  flex-direction: column;
+}
+
+.inputText small {
+  color: #6b7280;
+}
+
+.led {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 6px 2px rgb(16 185 129 / 0.6);
+}
+
+.mixer {
+  box-sizing: border-box;
+  width: 160px;
+  height: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #111827;
+  color: #f9fafb;
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.25);
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: grab;
+  user-select: none;
+}
+
+.knobs {
+  display: flex;
+  gap: 18px;
+}
+
+.knob {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #374151;
+  border: 2px solid #9ca3af;
+}
+
+/* The pointer on the knob. */
+.knob::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 1px;
+  width: 2px;
+  height: 7px;
+  margin-left: -1px;
+  background: #f9fafb;
+  border-radius: 1px;
+}
+
+.knobTurned {
+  transform: rotate(70deg);
+}
+
+.output {
+  box-sizing: border-box;
+  width: 160px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(90deg, #8b5cf6, #ec4899);
+  color: #fff;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: grab;
+  user-select: none;
+}
+
+/* ---- Lines: the class lands on every segment ---- */
+
+/* Thick, with rounded joints and ends. */
+.thick {
+  --dl-line-size: 10px;
+  background: #f97316;
+  border-radius: calc(var(--dl-line-size) / 2);
+}
+
+/* Dashed. A segment is a box, and a box doesn't know which way it runs, so
+   this masks it with dash stripes in both directions and keeps only where they
+   overlap. The line is thinner than a dash, so across its thickness the stripes
+   are always on, and along its length they cut the dashes. */
+.dashed {
+  --dl-line-size: 4px;
+  background: #2563eb;
+  mask-image:
+    repeating-linear-gradient(90deg, #000 0 10px, transparent 10px 16px),
+    repeating-linear-gradient(0deg, #000 0 10px, transparent 10px 16px);
+  mask-composite: intersect;
+  -webkit-mask-image:
+    repeating-linear-gradient(90deg, #000 0 10px, transparent 10px 16px),
+    repeating-linear-gradient(0deg, #000 0 10px, transparent 10px 16px);
+  -webkit-mask-composite: source-in;
+}
+
+/* Glowing. */
+.glow {
+  --dl-line-size: 4px;
+  background: #ec4899;
+  border-radius: 2px;
+  box-shadow:
+    0 0 6px 1px #ec4899,
+    0 0 16px #f9a8d4;
+}
+
+/* Handles keep a constant on-screen size: --dl-zoom is set by the Scene. */
+.handle {
+  display: block;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
+  background: #fff;
+  border: 2px solid #8b5cf6;
+  border-radius: 3px;
+  cursor: move;
+  transform: scale(calc(1 / var(--dl-zoom, 1))) rotate(45deg);
+}
