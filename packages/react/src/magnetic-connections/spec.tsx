@@ -1,11 +1,11 @@
 // Integration specs: a Scene with Dots and an ElbowLine, as consumers use them.
-import { createSceneState } from '@dots-and-lines/core';
+import { createSceneState, type Point } from '@dots-and-lines/core';
 import { act, fireEvent, render } from '@testing-library/react';
 import { StrictMode, type ReactNode } from 'react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Dot } from '../dot';
-import { ElbowLine } from '../elbow-line';
+import { ElbowLine, type ElbowLineProps } from '../elbow-line';
 import { Scene } from '../scene';
 import { measureDots } from '../test/measure-dots';
 
@@ -22,8 +22,10 @@ type Layout = {
   dot?: { x: number; y: number; isMagnetic?: boolean } | null;
   line?: {
     isMagnetic?: boolean;
-    initialStart?: typeof START;
-    initialEnd?: typeof END;
+    initialStart?: Point;
+    initialEnd?: Point;
+    initialRoute?: readonly Point[];
+    onRouteChange?: (route: Point[]) => void;
   };
   /** Render the Dot after the line, instead of before it. */
   dotLast?: boolean;
@@ -44,10 +46,12 @@ function layout({
   const lineNode = (
     <ElbowLine
       key="line"
-      initialStart={START}
-      initialEnd={END}
-      {...line}
-      handle={<i />}
+      {...({
+        initialStart: START,
+        initialEnd: END,
+        ...line,
+        handle: <i />,
+      } as ElbowLineProps)}
     />
   );
   return (state: ReturnType<typeof createSceneState>): ReactNode => {
@@ -336,6 +340,78 @@ describe('magnetic connections', () => {
       });
       s.select();
       expect(s.at('end')).toBe('181,110');
+    });
+  });
+
+  describe('saving and restoring a route', () => {
+    const noStartEnd = { initialStart: undefined, initialEnd: undefined };
+
+    it('reports the route as the attached Dot moves the line', () => {
+      const onRouteChange = vi.fn();
+      const s = setup({ line: { onRouteChange } });
+      s.select();
+      dragEnd(s, 'end', -8); // attach
+      onRouteChange.mockClear();
+
+      s.update({ dot: { x: 150, y: 200 }, line: { onRouteChange } });
+      expect(onRouteChange).toHaveBeenLastCalledWith([
+        { x: 0, y: 0 },
+        { x: 230, y: 0 },
+        { x: 230, y: 220 },
+      ]);
+    });
+
+    it('reports the route when attaching on mount moves an end', () => {
+      const onRouteChange = vi.fn();
+      setup({
+        line: { onRouteChange, initialEnd: { x: 181, y: 110 } },
+      });
+      expect(onRouteChange).toHaveBeenCalledTimes(1);
+      expect(onRouteChange).toHaveBeenLastCalledWith([
+        { x: 0, y: 0 },
+        { x: 180, y: 0 },
+        { x: 180, y: 110 },
+      ]);
+    });
+
+    it('reports the same route under StrictMode, with no extra calls', () => {
+      const onRouteChange = vi.fn();
+      setup({
+        strict: true,
+        line: { onRouteChange, initialEnd: { x: 181, y: 110 } },
+      });
+      expect(onRouteChange).toHaveBeenLastCalledWith([
+        { x: 0, y: 0 },
+        { x: 180, y: 0 },
+        { x: 180, y: 110 },
+      ]);
+      expect(onRouteChange).toHaveBeenCalledTimes(1);
+    });
+
+    it('says nothing on mount when no end moves', () => {
+      const onRouteChange = vi.fn();
+      setup({ line: { onRouteChange } });
+      expect(onRouteChange).not.toHaveBeenCalled();
+    });
+
+    it('restores a saved route, re-attaches the end, and follows the Dot again', () => {
+      const onRouteChange = vi.fn();
+      const first = setup({ line: { onRouteChange } });
+      first.select();
+      dragEnd(first, 'end', -8);
+      first.update({ dot: { x: 150, y: 200 }, line: { onRouteChange } });
+      const saved = onRouteChange.mock.lastCall![0] as Point[];
+      first.unmount();
+
+      // Reload: the Dot is where it was saved, and the line comes back from
+      // the saved route alone. No binding was saved.
+      const line = { initialRoute: saved, ...noStartEnd };
+      const again = setup({ dot: { x: 150, y: 200 }, line });
+      again.select();
+      expect(again.at('end')).toBe('230,220');
+      again.update({ dot: { x: 100, y: 300 }, line });
+      expect(again.at('end')).toBe('180,320');
+      expect(again.at('start')).toBe('0,0');
     });
   });
 });

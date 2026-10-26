@@ -12,6 +12,8 @@ Rules that apply to every component:
 | Export                    | Kind      | Prop / arg / return          | Type                                           | Default                         | Notes                                                                                                                                                                                                                                                                                             |
 | ------------------------- | --------- | ---------------------------- | ---------------------------------------------- | ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `useSceneState(options?)` | Hook      | arg: `defaultView`           | `View`                                         | `{ panX: 0, panY: 0, zoom: 1 }` | Initial camera                                                                                                                                                                                                                                                                                    |
+|                           |           | arg: `defaultDots`           | `readonly DotState[]`                          | `[]`                            | Starting Dots `{ id, x, y }`, e.g. from a saved `toJSON()`. Untrusted: entries with a non-finite position, or an empty or repeated id, are dropped                                                                                                                                                |
+|                           |           | arg: `defaultLines`          | `readonly LineState[]`                         | `[]`                            | Starting lines `{ id, route }`. Routes that are not valid and orthogonal are dropped                                                                                                                                                                                                              |
 |                           |           | arg: `zoom`                  | `{ min: number; max: number }`                 | `{ min: 0.1, max: 2 }`          | Zoom limits. `setView` and pan/zoom input are clamped to it                                                                                                                                                                                                                                       |
 |                           |           | returns                      | `SceneState`                                   |                                 | A **stable object**: same identity on every render, so calling the hook never re-renders on pan or zoom. Pass it to `Scene`                                                                                                                                                                       |
 |                           |           | returns: `state.getView`     | `() => View`                                   |                                 | Current camera. Does not subscribe                                                                                                                                                                                                                                                                |
@@ -26,7 +28,7 @@ Rules that apply to every component:
 |                           |           | `panZoom`                    | `boolean`                                      | `true`                          | `false` turns off built-in pan and zoom                                                                                                                                                                                                                                                           |
 |                           |           | `children`                   | `ReactNode`                                    |                                 | `Dot`s and `ElbowLine`s. Pressing the Scene's background takes focus off whatever was selected                                                                                                                                                                                                    |
 | `useScene(state, select)` | Hook      | arg: `state`                 | `SceneState`                                   | required                        |                                                                                                                                                                                                                                                                                                   |
-|                           |           | arg: `select`                | `(state: SceneState) => T`                     | required                        | Picks one value, e.g. `(s) => s.getView().zoom`. Must return a primitive or an object the state already holds (`getView()`, `getSelection()`), never a freshly built object                                                                                                                       |
+|                           |           | arg: `select`                | `(state: SceneState) => T`                     | required                        | Picks one value, e.g. `(s) => s.getView().zoom`. Must return a primitive or an object the state already holds (`getView()`, `getDots()`, `getLines()`), never a freshly built object                                                                                                              |
 |                           |           | returns                      | `T`                                            |                                 | Re-renders its component only when the picked value changes                                                                                                                                                                                                                                       |
 | `useSelected()`           | Hook      | returns                      | `boolean`                                      |                                 | Whether the nearest `Dot` or `ElbowLine` is selected (focus is inside it). Call it from a component rendered inside one, such as a Dot's children. Throws outside both                                                                                                                            |
 | `Dot`                     | Component | `x`, `y`                     | `number`                                       | required                        | Top-left corner                                                                                                                                                                                                                                                                                   |
@@ -38,6 +40,8 @@ Rules that apply to every component:
 |                           |           | `isMagnetic`                 | `boolean`                                      | `true`                          | Whether line ends snap to this Dot's border and then follow it. A line can also opt out with its own `isMagnetic`. Turning it off releases any line attached to the Dot, leaving each end where it was                                                                                            |
 |                           |           | `children`                   | `ReactNode`                                    | required                        | The visuals. The Dot is exactly as large as its children                                                                                                                                                                                                                                          |
 | `ElbowLine`               | Component | `initialStart`, `initialEnd` | `Point`                                        | required                        | Where the line begins. Read **once, on mount**: it starts as an L (or a straight line if aligned) and the library owns the route after that. Change the component's `key` to start over                                                                                                           |
+|                           |           | `initialRoute`               | `readonly Point[]`                             |                                 | Instead of `initialStart` / `initialEnd` (passing both is a type error): restores a whole route, e.g. one saved from `onRouteChange`. Read **once, on mount**. At least two points, every segment along an axis; an invalid route falls back to an L between its first and last point             |
+|                           |           | `onRouteChange`              | `(route: Point[]) => void`                     |                                 | Called with the whole route whenever it changes: a handle drag, or an attached Dot moving. Not called on mount unless attaching to a Dot there moves an end. Pass the last value back as `initialRoute` to restore the line                                                                       |
 |                           |           | `className`                  | `string`                                       |                                 | Applied to **every segment element**. Thickness comes from `--dl-line-size`                                                                                                                                                                                                                       |
 |                           |           | `autoFocus`                  | `boolean`                                      | `false`                         | Selects the line as soon as it mounts, e.g. one just made by `onConnect`                                                                                                                                                                                                                          |
 |                           |           | `isMagnetic`                 | `boolean`                                      | `true`                          | Whether an end dragged within 16 screen px of a magnetic Dot snaps to its border, and then follows that Dot until it is dragged more than 24 screen px away. Also whether `initialStart` / `initialEnd` attach to a Dot they sit on when the line mounts. `false` makes the line ignore every Dot |
@@ -81,6 +85,50 @@ type Mode =
   | 'connect'; // clicking creates a new line: first click is the start, second is the end
 ```
 
+### `DotState`, `LineState` and `SceneSnapshot`
+
+What the Scene's state holds, all plain JSON:
+
+```ts
+type DotState = { id: string; x: number; y: number };
+type LineState = { id: string; route: Point[] }; // orthogonal, at least two points
+type SceneSnapshot = {
+  defaultView: View;
+  defaultDots: DotState[];
+  defaultLines: LineState[];
+}; // sceneState.toJSON()
+```
+
+State-driven use, with every prop passed explicitly:
+
+```tsx
+const sceneState = useSceneState(initialBoard); // e.g. JSON.parse(saved)
+const dots = useScene(sceneState, (s) => s.getDots());
+const lines = useScene(sceneState, (s) => s.getLines());
+
+<Scene state={sceneState}>
+  {dots.map((dot) => (
+    <Dot
+      key={dot.id}
+      x={dot.x}
+      y={dot.y}
+      onMove={(x, y) => sceneState.moveDot(dot.id, x, y)}
+    >
+      …
+    </Dot>
+  ))}
+  {lines.map((line) => (
+    <ElbowLine
+      key={line.id}
+      initialRoute={line.route}
+      onRouteChange={(route) => sceneState.setLineRoute(line.id, route)}
+    />
+  ))}
+</Scene>;
+
+// Save: JSON.stringify(sceneState) (the encoding and the debounce are yours).
+```
+
 ### Selection
 
 Selection is the browser's own **focus**. `Scene`, `Dot` and `ElbowLine` each render an element with `tabindex="-1"`, so a press focuses it (and the press-to-focus rules of the browser pick the nearest focusable ancestor of whatever was pressed). A Dot or line is **selected** while focus is anywhere inside it, which is what `:focus-within` means.
@@ -115,6 +163,23 @@ function Card() {
 
 To select from code, pass `autoFocus` (selects on mount). Outside that, focus the element yourself.
 
+### The two hooks
+
+There are two, and they do different jobs. One makes the store; the other reads from it.
+
+| Hook                             | What it does                                                                                                                                                                           | Re-renders?                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| `useSceneState(options)`         | Creates the store once (`useState(() => createSceneState(options))`) and returns the same handle on every render. Options are read only on the first render. It subscribes to nothing. | Never.                        |
+| `useScene(sceneState, selector)` | Subscribes to the store (`useSyncExternalStore`) and returns the one value the selector picks.                                                                                         | Only when that value changes. |
+
+`useSceneState` is not state you read: it returns a handle. So calling it in a top-level component never re-renders that component on pan, zoom or mode changes. To show a value (the zoom, the mode), read it with `useScene`. To act (set the mode, pan, zoom) or to read without subscribing, call the handle's methods directly.
+
+```tsx
+const sceneState = useSceneState({ defaultView }); // create once
+const zoom = useScene(sceneState, (s) => s.getView().zoom); // re-renders when zoom changes
+<button onClick={() => sceneState.setMode('connect')}>Add line</button>; // no hook needed
+```
+
 ### `SceneState`
 
 ```ts
@@ -127,7 +192,20 @@ type SceneState = {
   panBy(dx: number, dy: number): void;
   /** Multiply zoom by `factor`, clamped. `origin` (Scene-local screen px) stays fixed. */
   zoomBy(factor: number, origin?: Point): void;
-  /** Called after any camera or mode change. Returns an unsubscribe function. */
+  /** Dots, in draw order. The array and each entry keep their identity until they change. */
+  getDots(): readonly DotState[];
+  /** Returns the id (generated if omitted), or `null` for a non-finite position or an id in use. */
+  addDot(dot: { id?: string; x: number; y: number }): string | null;
+  moveDot(id: string, x: number, y: number): void; // ignored: unknown id, non-finite
+  removeDot(id: string): void;
+  getLines(): readonly LineState[];
+  /** Returns the id (generated if omitted), or `null` for an invalid route or an id in use. */
+  addLine(line: { id?: string; route: readonly Point[] }): string | null;
+  setLineRoute(id: string, route: readonly Point[]): void; // ignored: unknown id, invalid route
+  removeLine(id: string): void;
+  /** `{ defaultView, defaultDots, defaultLines }`: JSON.stringify(sceneState) saves it. */
+  toJSON(): SceneSnapshot;
+  /** Called after any camera, mode, Dot or line change. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
 };
 ```
@@ -177,7 +255,7 @@ Line ends snap to the borders of `Dot`s and then follow them. It is on by defaul
 - **Letting go.** Dragging the end more than **24 screen px** from the Dot detaches it. The gap between 16 and 24 stops it flickering on and off at the threshold. Removing the Dot, or turning `isMagnetic` off on the Dot or the line, also detaches: the end stays where it last was.
 - **Attaching on mount.** When an `ElbowLine` mounts, each of `initialStart` and `initialEnd` that is within 16 screen px of a magnetic Dot's border attaches to it. Dots mounted later do not pull in existing lines. This is how a line from `onConnect` ends up attached.
 - **Routing.** The end segment keeps its orientation. A line with only two points routes a Z so the far end never moves. The end segment is not forced to leave the Dot perpendicular, so it can run along or through the Dot's border.
-- **No ids, no callbacks.** The attachment is internal. Nothing tells the consumer which Dot a line is attached to, and it is not saved: a line that remounts starts free (and re-attaches if its `initial*` points sit on a Dot).
+- **No ids, no callbacks.** The attachment is internal. Nothing tells the consumer which Dot a line is attached to, and it is not saved. A line that remounts starts free, and attaches again if its `initialStart` / `initialEnd` (or the ends of its `initialRoute`) sit on a Dot. That is how a saved route comes back attached.
 
 ## Also exported by `@dots-and-lines/core`
 
@@ -187,6 +265,7 @@ Used by `@dots-and-lines/react` and intended for framework adapters, not for app
 createSceneState(options?): SceneState                    // the store behind useSceneState
 resolveInput(event: InputEvent): ViewAction | null        // built-in wheel / space-drag bindings
 seedElbowPoints(start: Point, end: Point): Point[]        // the L (or straight) path an ElbowLine starts as
+parseElbowRoute(input: unknown): Point[] | null           // validates a saved route (orthogonal, 2+ points), or null
 moveElbowSegment(points, segmentIndex, dx, dy): Point[]   // what dragging a segment does
 moveElbowEnd(points, 'start' | 'end', to: Point): Point[] // what dragging an end does
 lineSegments(points): ElbowSegment[]                      // geometry of each segment

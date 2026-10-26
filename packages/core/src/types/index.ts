@@ -16,3 +16,19 @@ export type Mode =
   | 'select'
   /** Clicking creates a new line: first click is the start, second is the end. */
   | 'connect';
+
+/** A Dot as the Scene's state holds it. The consumer renders it as a `Dot`. */
+export type DotState = { id: string; x: number; y: number };
+
+/** A line as the Scene's state holds it: its whole orthogonal route. */
+export type LineState = { id: string; route: Point[] };
+
+/**
+ * What `sceneState.toJSON()` returns. The keys are the options
+ * `createSceneState` takes, so a saved snapshot can be passed straight back in.
+ */
+export type SceneSnapshot = {
+  defaultView: View;
+  defaultDots: DotState[];
+  defaultLines: LineState[];
+};

@@ -4,16 +4,6 @@ Not a plan, a list. Each item says what is missing and what is decided. Context:
 
 ## Blocking
 
-- **Save and restore a line's route.**
-  - Today `ElbowLine` takes `initialStart` / `initialEnd` only, and has no way to report an edited route. Share links store every lead's full `points`, so a bent line can't survive a reload.
-  - The camera is already covered: `useSceneState({ defaultView })` takes a plain `View`, and `sceneState.getView()` returns one. The consumer encodes it however it likes. `persist-view` shows this. Nothing to add in the library.
-  - Lines can't ride on `sceneState`. It holds the camera and the mode, and Dot positions are already consumer-owned and controlled. Putting routes in it would need a line `id`, or would make lines half-controlled.
-  - Proposed: give `ElbowLine` the same shape as `Dot`. A route in (`initialRoute`, validated, falling back to the seeded L if it isn't orthogonal), and a route out (`onRouteChange(points)`). It would fire on every change to the **resolved** route: a user edit, and also a line following a Dot. A saved route whose attached end is stale would otherwise reload detached.
-  - Open question: `onRouteChange` on every move, or only on pointer-up as `pedal-party` does today (`onLeadChange`)?
-  - Core likely gains a route validator (is it orthogonal, at least two points, finite numbers).
-- **Example: `pedal-party`-style URL encoding.**
-  - Blocked by the item above. Lives in the playground, not the library: `lz-string`, a `board/` prefix, `location.hash`, `replaceState` debounced to 200 ms. Only the playground gets the dependency.
-  - It should save Dot positions, each line's route, and the view.
 - **Line ends: tips.**
   - Needed for the input jacks and their tip depths. Decided: `pedal-party` changes to fit, so the drawn end can differ from `pedal-party`'s current one.
   - Still to design: `tipStart` / `tipEnd` props (a node at each end?). Which way does the node face, and does it shorten the drawn path or sit on top of it? Does a magnetic end still snap to the Dot's border? (Probably yes, and the tip sticks out of it.)
@@ -52,6 +42,11 @@ Not a plan, a list. Each item says what is missing and what is decided. Context:
   - Bends can merge away when a route collapses.
   - An attachment is lost if the line remounts.
   - The handle on an attached end is half covered by a Dot later in the tree.
+
+## API cleanup
+
+- **Rename `useSceneState`.** It creates a handle and returns no state, so the name misleads. Candidates: `useCreateScene` or `useInitScene`. Touches the playground examples, the specs, the docs and both packages' exports. `useScene` (the reader) keeps its name.
+- Longer term: decide whether two hooks are worth keeping at all (see the options in the chat: rename only, drop the creation hook, or let `Scene` own the store).
 
 ## Corner rounding: done as far as CSS goes
 

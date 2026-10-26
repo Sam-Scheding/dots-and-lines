@@ -15,6 +15,7 @@ import { MagneticOffExample } from './magnetic-off';
 import { PanZoomDisabledExample } from './pan-zoom-disabled';
 import { PersistViewExample } from './persist-view';
 import { ToolbarExample } from './toolbar';
+import { UrlStateExample } from './url-state';
 import { UseSelectedExample } from './use-selected';
 import { ZoomControlsExample } from './zoom-controls';
 
@@ -106,6 +107,13 @@ export const examples: Example[] = [
     description:
       'A border-radius in the line’s className rounds its corners, up to half its thickness.',
     Component: ElbowLineRoundedExample,
+  },
+  {
+    id: 'url-state',
+    title: 'Board in the URL',
+    description:
+      'Dots, lines and the camera saved to the URL with JSON.stringify(sceneState), and restored on reload.',
+    Component: UrlStateExample,
   },
   {
     id: 'use-selected',

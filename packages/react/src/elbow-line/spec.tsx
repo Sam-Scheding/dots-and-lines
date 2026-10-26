@@ -1,6 +1,6 @@
-import { createSceneState } from '@dots-and-lines/core';
+import { createSceneState, type Point } from '@dots-and-lines/core';
 import { act, fireEvent, render } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { Scene } from '../scene';
 import { ElbowLine } from './index';
@@ -9,7 +9,9 @@ import { ElbowLine } from './index';
 const START = { x: 0, y: 0 };
 const END = { x: 80, y: 60 };
 
-type LineProps = Parameters<typeof ElbowLine>[0];
+type LineProps = Partial<
+  Omit<Parameters<typeof ElbowLine>[0], 'initialRoute'>
+> & { initialRoute?: readonly Point[] };
 
 /** `selected` focuses the line once it has mounted, which is what selects it. */
 function setup(
@@ -20,13 +22,15 @@ function setup(
   const tree = (extra: Partial<LineProps> = {}) => (
     <Scene state={state}>
       <ElbowLine
-        initialStart={START}
-        initialEnd={END}
-        className="line"
-        handle={<i data-testid="handle" />}
-        overlay={<b data-testid="overlay">toolbar</b>}
-        {...props}
-        {...extra}
+        {...({
+          initialStart: START,
+          initialEnd: END,
+          className: 'line',
+          handle: <i data-testid="handle" />,
+          overlay: <b data-testid="overlay">toolbar</b>,
+          ...props,
+          ...extra,
+        } as Parameters<typeof ElbowLine>[0])}
       />
     </Scene>
   );
@@ -234,5 +238,106 @@ describe('ElbowLine', () => {
     expect(q('[data-dl-line-handle="end"]')[0].style.transform).toBe(
       'translate(100px, 60px) translate(-50%, -50%)',
     );
+  });
+});
+
+describe('ElbowLine route in and out', () => {
+  // A Z: right 40, down 50, right 40.
+  const Z = [
+    { x: 0, y: 0 },
+    { x: 40, y: 0 },
+    { x: 40, y: 50 },
+    { x: 80, y: 50 },
+  ];
+  const fromRoute = (initialRoute: readonly Point[]) => ({
+    initialRoute,
+    initialStart: undefined,
+    initialEnd: undefined,
+  });
+  const handleAt = (el: HTMLElement) => el.style.transform;
+
+  describe('initialRoute', () => {
+    it('restores a route with bends', () => {
+      const { q } = setup({ ...fromRoute(Z), selected: true });
+      expect(q('[data-dl-line-segment]')).toHaveLength(3);
+      expect(handleAt(q('[data-dl-line-handle="start"]')[0])).toBe(
+        'translate(0px, 0px) translate(-50%, -50%)',
+      );
+      expect(handleAt(q('[data-dl-line-handle="end"]')[0])).toBe(
+        'translate(80px, 50px) translate(-50%, -50%)',
+      );
+    });
+
+    it('falls back to an L between the ends when the route is not valid', () => {
+      const { q } = setup({
+        ...fromRoute([
+          { x: 0, y: 0 },
+          { x: 30, y: 40 },
+        ]),
+      });
+      expect(q('[data-dl-line-segment]')).toHaveLength(2);
+    });
+
+    it('is only read when the line mounts', () => {
+      const { q, rerender, tree } = setup({ ...fromRoute(Z), selected: true });
+      rerender(
+        tree({
+          ...fromRoute([
+            { x: 0, y: 0 },
+            { x: 500, y: 0 },
+          ]),
+        }),
+      );
+      expect(q('[data-dl-line-segment]')).toHaveLength(3);
+    });
+  });
+
+  describe('onRouteChange', () => {
+    it('is not called on mount', () => {
+      const onRouteChange = vi.fn();
+      setup({ onRouteChange });
+      setup({ ...fromRoute(Z), onRouteChange });
+      expect(onRouteChange).not.toHaveBeenCalled();
+    });
+
+    it('is called with the whole route as a handle is dragged', () => {
+      const onRouteChange = vi.fn();
+      const { q } = setup({ onRouteChange, selected: true });
+      press(q('[data-dl-line-handle="end"]')[0], 0, 0);
+      moveTo(10, 0);
+      expect(onRouteChange).toHaveBeenLastCalledWith([
+        { x: 0, y: 0 },
+        { x: 90, y: 0 },
+        { x: 90, y: 60 },
+      ]);
+      moveTo(20, 0);
+      expect(onRouteChange).toHaveBeenCalledTimes(2);
+      release();
+      expect(onRouteChange).toHaveBeenCalledTimes(2);
+    });
+
+    it('is not called when a handle is pressed without moving', () => {
+      const onRouteChange = vi.fn();
+      const { q } = setup({ onRouteChange, selected: true });
+      press(q('[data-dl-line-handle="start"]')[0], 0, 0);
+      release();
+      expect(onRouteChange).not.toHaveBeenCalled();
+    });
+
+    it('can be fed straight back in as initialRoute', () => {
+      const onRouteChange = vi.fn();
+      const first = setup({ onRouteChange, selected: true });
+      press(first.q('[data-dl-line-handle="segment"]')[0], 0, 0);
+      moveTo(0, 25); // pull the first segment down: three segments
+      release();
+      const saved = onRouteChange.mock.lastCall![0] as Point[];
+      first.unmount();
+
+      const again = setup({ ...fromRoute(saved), selected: true });
+      expect(again.q('[data-dl-line-segment]')).toHaveLength(saved.length - 1);
+      expect(handleAt(again.q('[data-dl-line-handle="end"]')[0])).toBe(
+        'translate(80px, 60px) translate(-50%, -50%)',
+      );
+    });
   });
 });

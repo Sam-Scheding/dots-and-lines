@@ -1,6 +1,16 @@
 // @dots-and-lines/core: framework-agnostic, DOM-free.
 
-export type { Point, View, Mode, ZoomLimits, Rect, Edge } from './types';
+export type {
+  Point,
+  View,
+  Mode,
+  ZoomLimits,
+  Rect,
+  Edge,
+  DotState,
+  LineState,
+  SceneSnapshot,
+} from './types';
 
 export { createSceneState } from './create-scene-state';
 export type { SceneState, CreateSceneStateOptions } from './create-scene-state';
@@ -12,6 +22,7 @@ export type { ViewAction } from './apply-view-action';
 
 // Elbow-line geometry. Used by framework adapters (ElbowLine owns its route).
 export { seedElbowPoints } from './seed-elbow-points';
+export { parseElbowRoute } from './parse-elbow-route';
 export { moveElbowSegment } from './move-elbow-segment';
 export { moveElbowEnd } from './move-elbow-end';
 export { lineSegments } from './line-segments';

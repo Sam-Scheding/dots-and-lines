@@ -4,6 +4,7 @@ import {
   lineSegments,
   moveElbowEnd,
   moveElbowSegment,
+  parseElbowRoute,
   seedElbowPoints,
   snapPointToRects,
   type ElbowSegment,
@@ -33,15 +34,33 @@ import { SelectedContext } from '../selected-context';
 import { useFocusWithin } from '../use-focus-within';
 import { useLatest } from '../use-latest';
 
-export type ElbowLineProps = {
-  /**
-   * Where the line starts and ends, in CSS px at zoom 1. Only read when the
-   * line mounts: it begins as an L (or a straight line if the points are
-   * aligned), and the user reshapes it from there. Change the component's
-   * `key` to start over.
-   */
-  initialStart: Point;
-  initialEnd: Point;
+/**
+ * Where the line begins. Only read when the line mounts. Change the
+ * component's `key` to start over.
+ */
+type RouteSource =
+  | {
+      /**
+       * Where the line starts and ends, in CSS px at zoom 1. It begins as an L
+       * (or a straight line if the points are aligned), and the user reshapes
+       * it from there.
+       */
+      initialStart: Point;
+      initialEnd: Point;
+      initialRoute?: never;
+    }
+  | {
+      /**
+       * A whole route to restore, e.g. one saved from `onRouteChange`: at
+       * least two points, every segment running along an axis. A route that
+       * isn't valid falls back to an L between its first and last point.
+       */
+      initialRoute: readonly Point[];
+      initialStart?: never;
+      initialEnd?: never;
+    };
+
+export type ElbowLineProps = RouteSource & {
   /** Applied to every segment element. Thickness comes from `--dl-line-size`. */
   className?: string;
   /** Select the line as soon as it mounts, e.g. one just made by `onConnect`. */
@@ -60,6 +79,13 @@ export type ElbowLineProps = {
   handle?: ReactNode;
   /** Rendered at the line's anchor point while selected, e.g. a toolbar. */
   overlay?: ReactNode;
+  /**
+   * Called with the whole route whenever it changes: the user drags a handle,
+   * or an attached Dot moves and the line follows. Not called on mount, unless
+   * attaching to a Dot there moves an end. Pass the result back as
+   * `initialRoute` to restore the line.
+   */
+  onRouteChange?: (route: Point[]) => void;
 };
 
 const LINE_SIZE = 'var(--dl-line-size, 2px)';
@@ -170,20 +196,56 @@ function overlayStyle(point: Point): CSSProperties {
   };
 }
 
+function isFinitePoint(value: unknown): value is Point {
+  if (typeof value !== 'object' || value === null) return false;
+  const { x, y } = value as Record<string, unknown>;
+  return Number.isFinite(x) && Number.isFinite(y);
+}
+
+/** The route a line starts with, from whichever initial props it was given. */
+function seedRoute(
+  initialStart: Point | undefined,
+  initialEnd: Point | undefined,
+  initialRoute: readonly Point[] | undefined,
+): Point[] {
+  if (!initialRoute) {
+    return seedElbowPoints(initialStart as Point, initialEnd as Point);
+  }
+  const parsed = parseElbowRoute(initialRoute);
+  if (parsed) return parsed;
+  // Not a valid route: keep what we can, an L between the two ends.
+  const first = initialRoute[0];
+  const last = initialRoute[initialRoute.length - 1];
+  const origin = { x: 0, y: 0 };
+  return seedElbowPoints(
+    isFinitePoint(first) ? first : origin,
+    isFinitePoint(last) ? last : origin,
+  );
+}
+
+function routesEqual(a: readonly Point[], b: readonly Point[]): boolean {
+  return (
+    a.length === b.length &&
+    a.every((point, i) => point.x === b[i].x && point.y === b[i].y)
+  );
+}
+
 export function ElbowLine({
   initialStart,
   initialEnd,
+  initialRoute,
   className,
   handle,
   overlay,
   autoFocus = false,
   isMagnetic = true,
+  onRouteChange,
 }: ElbowLineProps) {
   const { state, registry } = useSceneContext('ElbowLine');
   // The library owns the route. It starts as an L between the two initial
   // points and is edited in place by the handles.
   const [points, setPoints] = useState(() =>
-    seedElbowPoints(initialStart, initialEnd),
+    seedRoute(initialStart, initialEnd, initialRoute),
   );
   // Which Dot edge each end is attached to, if any. A bound end is not stored
   // in `points`: it is looked up from the Dot every render, so it follows the
@@ -221,6 +283,19 @@ export function ElbowLine({
       end: released.end ? null : current.end,
     }));
   }, [hasReleased, resolved, released.start, released.end]);
+
+  // Tell the consumer whenever the drawn route really changes. Layout
+  // effects, so a saved route is never a frame behind what is on screen.
+  const onRouteChangeRef = useRef(onRouteChange);
+  const emittedRef = useRef(route);
+  useLayoutEffect(() => {
+    onRouteChangeRef.current = onRouteChange;
+  });
+  useLayoutEffect(() => {
+    if (routesEqual(emittedRef.current, route)) return;
+    emittedRef.current = route;
+    onRouteChangeRef.current?.(route.map((point) => ({ ...point })));
+  }, [route]);
 
   // Ends that start on a Dot's edge attach to it. Passive, so that every Dot
   // (before or after this line in the tree) has already reported its box.
