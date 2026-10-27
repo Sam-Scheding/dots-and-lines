@@ -48,6 +48,7 @@ export function MagneticDotsExample() {
       <Stage>
         <Scene
           state={sceneState}
+          previewClassName={styles.line}
           onConnect={({ start, end }) =>
             setLines((all) => [...all, { id: crypto.randomUUID(), start, end }])
           }

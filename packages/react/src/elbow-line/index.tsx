@@ -29,6 +29,7 @@ import {
   resolveBoundRoute,
   type Bindings,
 } from '../resolve-bound-route';
+import { LINE_SIZE, segmentStyle } from '../segment-style';
 import { startDrag } from '../start-drag';
 import { SelectedContext } from '../selected-context';
 import { useFocusWithin } from '../use-focus-within';
@@ -88,7 +89,6 @@ export type ElbowLineProps = RouteSource & {
   onRouteChange?: (route: Point[]) => void;
 };
 
-const LINE_SIZE = 'var(--dl-line-size, 2px)';
 /** Pointer target thickness: 12 screen px, whatever the zoom. */
 const HIT_SIZE = `max(${LINE_SIZE}, calc(12px / var(--dl-zoom, 1)))`;
 
@@ -109,51 +109,6 @@ function longestSegmentMidpoint(segments: readonly ElbowSegment[]): Point {
     if (!best || segment.length > best.length) best = segment;
   }
   return best ? best.midpoint : { x: 0, y: 0 };
-}
-
-/** `base` plus half a line thickness for each joint the segment extends past. */
-function extended(base: number, joints: 0 | 1 | 2): string {
-  if (joints === 0) return `${base}px`;
-  return `calc(${base}px + ${joints === 1 ? `${LINE_SIZE} / 2` : LINE_SIZE})`;
-}
-
-function segmentStyle(
-  segment: ElbowSegment,
-  segmentCount: number,
-): CSSProperties {
-  // Extend into interior corners by half the thickness so they join cleanly.
-  // Line ends are left flush with the point.
-  const startIsMin =
-    segment.orientation === 'h'
-      ? segment.start.x <= segment.end.x
-      : segment.start.y <= segment.end.y;
-  const startJoint = segment.index > 0;
-  const endJoint = segment.index < segmentCount - 1;
-  const minJoint = startIsMin ? startJoint : endJoint;
-  const maxJoint = startIsMin ? endJoint : startJoint;
-  const joints = ((minJoint ? 1 : 0) + (maxJoint ? 1 : 0)) as 0 | 1 | 2;
-
-  const base: CSSProperties = { position: 'absolute', pointerEvents: 'none' };
-  if (segment.orientation === 'h') {
-    return {
-      ...base,
-      left: minJoint
-        ? `calc(${segment.x}px - ${LINE_SIZE} / 2)`
-        : `${segment.x}px`,
-      top: `calc(${segment.y}px - ${LINE_SIZE} / 2)`,
-      width: extended(segment.length, joints),
-      height: LINE_SIZE,
-    };
-  }
-  return {
-    ...base,
-    left: `calc(${segment.x}px - ${LINE_SIZE} / 2)`,
-    top: minJoint
-      ? `calc(${segment.y}px - ${LINE_SIZE} / 2)`
-      : `${segment.y}px`,
-    width: LINE_SIZE,
-    height: extended(segment.length, joints),
-  };
 }
 
 function hitStyle(segment: ElbowSegment): CSSProperties {

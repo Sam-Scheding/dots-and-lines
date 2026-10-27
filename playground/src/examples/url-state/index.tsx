@@ -124,6 +124,7 @@ export function UrlStateExample() {
       <Stage>
         <Scene
           state={sceneState}
+          previewClassName={styles.line}
           onConnect={({ start, end }) =>
             setNewId(sceneState.addLine({ route: seedElbowPoints(start, end) }))
           }

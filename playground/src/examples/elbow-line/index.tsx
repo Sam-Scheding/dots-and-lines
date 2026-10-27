@@ -37,6 +37,7 @@ export function ElbowLineExample() {
       <Stage>
         <Scene
           state={sceneState}
+          previewClassName={styles.line}
           onConnect={({ start, end }) => {
             const id = crypto.randomUUID();
             setLines((all) => [...all, { id, start, end }]);

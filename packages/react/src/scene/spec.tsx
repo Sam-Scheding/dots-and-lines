@@ -227,6 +227,86 @@ describe('Scene', () => {
       expect(onConnect).not.toHaveBeenCalled();
     });
 
+    describe('preview', () => {
+      const segmentsOf = (root: HTMLElement) =>
+        Array.from(
+          root.querySelectorAll<HTMLElement>('[data-dl-preview-segment]'),
+        );
+      const move = (el: Element, clientX: number, clientY: number) =>
+        fireEvent.pointerMove(el, { clientX, clientY, pointerId: 1 });
+
+      it('draws nothing before the first click, even as the pointer moves', () => {
+        const { state, root } = setup();
+        act(() => state.setMode('connect'));
+        move(root, 40, 40);
+        expect(segmentsOf(root)).toHaveLength(0);
+      });
+
+      it('starts at the first click and ends at the pointer', () => {
+        const { state, root } = setup({ previewClassName: 'preview' });
+        act(() => state.setMode('connect'));
+        press(root, 10, 20);
+
+        move(root, 110, 20); // straight along the x axis: one segment
+        let segments = segmentsOf(root);
+        expect(segments).toHaveLength(1);
+        expect(segments[0]).toHaveClass('preview');
+        expect(segments[0].style.left).toBe('10px');
+        expect(segments[0].style.width).toBe('100px');
+
+        move(root, 110, 120); // an L: across, then down
+        segments = segmentsOf(root);
+        expect(segments).toHaveLength(2);
+        expect(segments[1].style.height).toContain('100px');
+
+        move(root, 60, 70); // the end follows the pointer
+        segments = segmentsOf(root);
+        expect(segments[0].style.width).toContain('50px');
+      });
+
+      it('is drawn in world coordinates, so it follows pan and zoom', () => {
+        const { state, root } = setup({}, { panX: 10, panY: 0, zoom: 2 });
+        act(() => state.setMode('connect'));
+        press(root, 30, 20); // world (10, 10)
+        move(root, 130, 20); // world (60, 10)
+        const [segment] = segmentsOf(root);
+        expect(segment.style.left).toBe('10px');
+        expect(segment.style.width).toBe('50px');
+      });
+
+      it('goes away when the line is finished', () => {
+        const { state, root } = setup();
+        act(() => state.setMode('connect'));
+        press(root, 10, 20);
+        move(root, 50, 60);
+        expect(segmentsOf(root).length).toBeGreaterThan(0);
+        press(root, 50, 60);
+        expect(segmentsOf(root)).toHaveLength(0);
+      });
+
+      it('goes away, and stays away, when the mode changes', () => {
+        const { state, root } = setup();
+        act(() => state.setMode('connect'));
+        press(root, 10, 20);
+        move(root, 50, 60);
+        act(() => state.setMode('select'));
+        expect(segmentsOf(root)).toHaveLength(0);
+        act(() => state.setMode('connect'));
+        move(root, 70, 70);
+        expect(segmentsOf(root)).toHaveLength(0);
+      });
+
+      it('does not intercept the pointer', () => {
+        const { state, root } = setup();
+        act(() => state.setMode('connect'));
+        press(root, 10, 20);
+        move(root, 50, 60);
+        for (const segment of segmentsOf(root)) {
+          expect(segment.style.pointerEvents).toBe('none');
+        }
+      });
+    });
+
     it('stops Dots underneath from starting a drag', () => {
       const onMove = vi.fn();
       const state = createSceneState();
@@ -312,6 +392,17 @@ describe('Scene', () => {
         start: { x: 190, y: 110 },
         end: { x: 180, y: 110 },
       });
+    });
+
+    it('snaps the end of the preview to a Dot like a click does', () => {
+      const { root } = setupWithDots();
+      press(root, 20, 110);
+      fireEvent.pointerMove(root, { clientX: 190, clientY: 110, pointerId: 1 });
+      // The end snaps to the right edge, x = 180: 160px from the start.
+      const segments = root.querySelectorAll<HTMLElement>(
+        '[data-dl-preview-segment]',
+      );
+      expect(segments[0].style.width).toBe('160px');
     });
 
     it('treats two clicks that snap to the same point as one point', () => {

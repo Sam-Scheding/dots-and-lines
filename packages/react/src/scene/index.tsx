@@ -1,6 +1,8 @@
 import {
   MAGNET_DISTANCE,
+  lineSegments,
   resolveInput,
+  seedElbowPoints,
   snapPointToRects,
   type Point,
   type SceneState,
@@ -19,6 +21,7 @@ import {
 import { createDotRegistry } from '../dot-registry';
 import { magneticTargets } from '../resolve-bound-route';
 import { SceneContext } from '../scene-context';
+import { segmentStyle } from '../segment-style';
 import { useLatest } from '../use-latest';
 import { useScene } from '../hooks';
 
@@ -27,6 +30,14 @@ export type SceneProps = {
   state: SceneState;
   /** Fires when the second click completes a line in `'connect'` mode. */
   onConnect?: (line: { start: Point; end: Point }) => void;
+  /**
+   * After the first click in `'connect'` mode, the Scene draws the line so far:
+   * from that click to the pointer, as the L an `ElbowLine` starts as. This is
+   * the `className` for its segments. Pass the one you give your `ElbowLine`s
+   * so the two look alike. Thickness comes from `--dl-line-size`, as for a
+   * line.
+   */
+  previewClassName?: string;
   /** `false` turns off built-in pan and zoom. Default `true`. */
   panZoom?: boolean;
   children?: ReactNode;
@@ -66,6 +77,7 @@ function applyAction(
 export function Scene({
   state,
   onConnect,
+  previewClassName,
   panZoom = true,
   children,
 }: SceneProps) {
@@ -82,6 +94,10 @@ export function Scene({
     clientY: number;
   } | null>(null);
   const connectStartRef = useRef<Point | null>(null);
+  // The line being drawn, for the preview. `end` follows the pointer.
+  const [preview, setPreview] = useState<{ start: Point; end: Point } | null>(
+    null,
+  );
 
   const [registry] = useState(createDotRegistry);
   const context = useMemo(() => ({ state, registry }), [state, registry]);
@@ -90,6 +106,7 @@ export function Scene({
   useEffect(() => {
     if (mode !== 'connect') {
       connectStartRef.current = null;
+      setPreview(null);
     }
   }, [mode]);
 
@@ -164,25 +181,32 @@ export function Scene({
     };
   };
 
-  const handleConnectClick = (clientX: number, clientY: number) => {
-    // Clicks snap to magnetic Dots like a dragged line end does. The line
-    // that `onConnect` creates then attaches itself on mount.
-    const clicked = clientToWorld(clientX, clientY);
+  // Where a pointer at (clientX, clientY) lands in connect mode: in world
+  // coordinates, snapped to a magnetic Dot like a dragged line end is.
+  const connectPoint = (clientX: number, clientY: number): Point => {
+    const point = clientToWorld(clientX, clientY);
     const snap = snapPointToRects(
-      clicked,
+      point,
       magneticTargets(registry.getSnapshot()),
       { distance: MAGNET_DISTANCE / state.getView().zoom },
     );
-    const point = snap ? snap.point : clicked;
+    return snap ? snap.point : point;
+  };
+
+  const handleConnectClick = (clientX: number, clientY: number) => {
+    // The line that `onConnect` creates attaches itself to a Dot on mount.
+    const point = connectPoint(clientX, clientY);
     const start = connectStartRef.current;
 
     if (!start) {
       connectStartRef.current = point;
+      setPreview({ start: point, end: point });
       return;
     }
     if (start.x === point.x && start.y === point.y) return;
 
     connectStartRef.current = null;
+    setPreview(null);
     onConnectRef.current?.({ start, end: point });
     state.setMode('select');
   };
@@ -217,6 +241,16 @@ export function Scene({
   };
 
   const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const connectStart = connectStartRef.current;
+    if (connectStart && state.getMode() === 'connect') {
+      const end = connectPoint(event.clientX, event.clientY);
+      setPreview((current) =>
+        current && current.end.x === end.x && current.end.y === end.y
+          ? current
+          : { start: connectStart, end },
+      );
+    }
+
     const pan = panRef.current;
     if (!pan || pan.pointerId !== event.pointerId) return;
 
@@ -241,6 +275,11 @@ export function Scene({
       // Already released.
     }
   };
+
+  // The line drawn so far in connect mode: the L an ElbowLine would start as.
+  const previewSegments = preview
+    ? lineSegments(seedElbowPoints(preview.start, preview.end))
+    : null;
 
   const worldStyle = {
     position: 'absolute',
@@ -276,6 +315,18 @@ export function Scene({
       >
         <div data-dl-world="" style={worldStyle}>
           {children}
+          {previewSegments ? (
+            <div data-dl-connect-preview="">
+              {previewSegments.map((segment) => (
+                <div
+                  key={segment.index}
+                  data-dl-preview-segment=""
+                  className={previewClassName}
+                  style={segmentStyle(segment, previewSegments.length)}
+                />
+              ))}
+            </div>
+          ) : null}
         </div>
       </div>
     </SceneContext>

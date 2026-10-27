@@ -125,6 +125,7 @@ export function PlaygroundExample() {
       <Stage ref={stageRef} grid={snapToGrid} gridView={{ panX, panY, zoom }}>
         <Scene
           state={sceneState}
+          previewClassName={styles.line}
           onConnect={({ start, end }) =>
             setNewId(sceneState.addLine({ route: seedElbowPoints(start, end) }))
           }

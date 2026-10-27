@@ -143,7 +143,7 @@ The Scene root is itself focusable (`tabindex="-1"`, `outline: none`), so a pres
 
 Built-in pan and zoom (on by default, `panZoom={false}` turns it off) uses `pedal-party`'s bindings: ctrl/cmd + wheel zooms about the cursor, shift + wheel pans horizontally, plain wheel pans, and space + drag pans. Because plain wheel pans, a Scene captures wheel events, so it will not let the page scroll while the pointer is over it.
 
-**Connect mode.** While `mode === 'connect'`, a pointer-down inside the Scene does not start a Dot drag. The first click is the start, the second is the end; the Scene calls `onConnect({ start, end })` and returns to `'select'`. The consumer stores those two points and renders an `ElbowLine` with them as `initialStart` / `initialEnd`. Each click first snaps to the nearest magnetic Dot border within 16 screen px, so a line drawn from one Dot to another attaches to both when it mounts.
+**Connect mode.** While `mode === 'connect'`, a pointer-down inside the Scene does not start a Dot drag. The first click is the start, the second is the end; the Scene calls `onConnect({ start, end })` and returns to `'select'`. The consumer stores those two points and renders an `ElbowLine` with them as `initialStart` / `initialEnd`. Each click first snaps to the nearest magnetic Dot border within 16 screen px, so a line drawn from one Dot to another attaches to both when it mounts. After the first click, the Scene draws the line so far, from that click to the pointer (snapped the same way), as the L the `ElbowLine` will start as. Its segments take `previewClassName`, the class you give your `ElbowLine`s. It is not an `ElbowLine`: it has no handles and takes no pointer input, and it is gone when the line is finished or the mode changes.
 
 ### `Dot`
 
